@@ -141,14 +141,12 @@ private class AccountSettingsController: SettingsController {
         return {
             row in
 
-            let selectorViewController = BlogSelectorViewController(selectedBlogDotComID: settings?.primarySiteID as NSNumber?,
+            let selectorViewController = BlogSelectorViewController(selectedBlogDotComID: settings?.primarySiteID as NSNumber!,
                                                                     successHandler: { (dotComID: NSNumber?) in
-                                                                        if let dotComID = dotComID?.intValue {
-                                                                            let change = AccountSettingsChange.primarySite(dotComID)
-                                                                            service.saveChange(change)
-                                                                        }
-            },
-                                                                    dismissHandler: nil)
+                    let change = AccountSettingsChange.primarySite((dotComID?.intValue)!)
+                    service.saveChange(change)
+                },
+                dismissHandler: nil)
 
             selectorViewController.title = NSLocalizedString("Primary Site", comment: "Primary Site Picker's Title")
             selectorViewController.displaysOnlyDefaultAccountSites = true
