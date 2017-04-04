@@ -727,6 +727,7 @@
                         <outlet property="selfHostedSigninButton" destination="anN-dQ-fFx" id="ous-AO-DwL"/>
                         <outlet property="submitButton" destination="0e2-rh-WSe" id="5zN-GS-mQX"/>
                         <outlet property="verticalCenterConstraint" destination="9II-72-Vbn" id="9LB-yo-e3b"/>
+                        <segue destination="Z1t-gY-MqH" kind="show" identifier="emailError" id="VeR-72-NwY"/>
                     </connections>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="F4Y-1Q-tCS" userLabel="First Responder" sceneMemberID="firstResponder"/>
@@ -847,6 +848,40 @@
                 <placeholder placeholderIdentifier="IBFirstResponder" id="V1h-jF-iIt" userLabel="First Responder" sceneMemberID="firstResponder"/>
             </objects>
             <point key="canvasLocation" x="2052" y="624"/>
+        </scene>
+        <!--View Controller-->
+        <scene sceneID="Ij5-vH-rCI">
+            <objects>
+                <viewController id="Z1t-gY-MqH" sceneMemberID="viewController">
+                    <layoutGuides>
+                        <viewControllerLayoutGuide type="top" id="unL-C9-xKX"/>
+                        <viewControllerLayoutGuide type="bottom" id="LmX-uH-lmF"/>
+                    </layoutGuides>
+                    <view key="view" contentMode="scaleToFill" id="nhU-Fs-SYS">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="We didn't find a WordPress.com account with that email address. Please double check and try again." textAlignment="center" lineBreakMode="tailTruncation" numberOfLines="0" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="XBh-3s-AyD">
+                                <rect key="frame" x="20" y="323" width="335" height="21"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" relation="greaterThanOrEqual" constant="21" id="K8m-JL-ZfO"/>
+                                </constraints>
+                                <fontDescription key="fontDescription" style="UICTFontTextStyleBody"/>
+                                <color key="textColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="displayP3"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                        </subviews>
+                        <color key="backgroundColor" red="0.2298797518" green="0.52114713189999995" blue="0.72555196290000001" alpha="1" colorSpace="custom" customColorSpace="displayP3"/>
+                        <constraints>
+                            <constraint firstItem="XBh-3s-AyD" firstAttribute="width" secondItem="nhU-Fs-SYS" secondAttribute="width" constant="-40" id="Gjq-6r-xCa"/>
+                            <constraint firstItem="XBh-3s-AyD" firstAttribute="centerX" secondItem="nhU-Fs-SYS" secondAttribute="centerX" id="bPL-iU-dAa"/>
+                            <constraint firstItem="XBh-3s-AyD" firstAttribute="centerY" secondItem="nhU-Fs-SYS" secondAttribute="centerY" id="iiI-k6-xVx"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="dbw-LQ-leU" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="2774" y="626"/>
         </scene>
         <!--Reset Password-->
         <scene sceneID="ncr-Tj-nfA">
@@ -1931,7 +1966,7 @@
     <inferredMetricsTieBreakers>
         <segue reference="kZV-1E-vsW"/>
         <segue reference="FUp-v0-vkX"/>
-        <segue reference="doZ-HT-Y0R"/>
+        <segue reference="uRH-55-Cmq"/>
         <segue reference="Ncm-cS-fDT"/>
     </inferredMetricsTieBreakers>
 </document>
