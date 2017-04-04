@@ -17,7 +17,7 @@ import Hero
     class func createControllerForSigninFlow(showsEditor thenEditor: Bool) -> UIViewController {
         if true {
             let storyboard = UIStoryboard(name: "Signin", bundle: Bundle.main)
-            let controller = storyboard.instantiateViewController(withIdentifier: "PromoViewControllerAlt")
+            let controller = storyboard.instantiateViewController(withIdentifier: "PromoViewControllerAltURL")
 //            controller.loginFields = loginFields == nil ? LoginFields() : loginFields!
             return controller
         }

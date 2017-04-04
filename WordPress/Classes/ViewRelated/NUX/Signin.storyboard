@@ -1951,6 +1951,115 @@
             </objects>
             <point key="canvasLocation" x="-1889" y="125"/>
         </scene>
+        <!--Signin Promo View Controller-->
+        <scene sceneID="53g-Bz-NvD">
+            <objects>
+                <viewController storyboardIdentifier="PromoViewControllerAltURL" id="OfS-wV-lli" customClass="SigninPromoViewController" customModule="WordPress" customModuleProvider="target" sceneMemberID="viewController">
+                    <layoutGuides>
+                        <viewControllerLayoutGuide type="top" id="6BI-UN-nQZ"/>
+                        <viewControllerLayoutGuide type="bottom" id="PXy-mW-dQV"/>
+                    </layoutGuides>
+                    <view key="view" contentMode="scaleToFill" id="kGL-rw-Q99">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <view contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="kg1-Tb-BND">
+                                <rect key="frame" x="0.0" y="0.0" width="375" height="539"/>
+                                <subviews>
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Catch up with your favorite sites and join the conversation anywhere" textAlignment="center" lineBreakMode="tailTruncation" numberOfLines="0" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="2eP-Hg-uYT">
+                                        <rect key="frame" x="20" y="424" width="335" height="95"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" relation="greaterThanOrEqual" constant="20" id="kLv-9m-OKT"/>
+                                        </constraints>
+                                        <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                        <nil key="textColor"/>
+                                        <nil key="highlightedColor"/>
+                                    </label>
+                                    <imageView userInteractionEnabled="NO" contentMode="scaleToFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="fake-promo" translatesAutoresizingMaskIntoConstraints="NO" id="ce2-m6-WB9">
+                                        <rect key="frame" x="61" y="20" width="254" height="384"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="254" id="PEm-nA-jvS"/>
+                                            <constraint firstAttribute="height" constant="384" id="xDH-er-rmX"/>
+                                        </constraints>
+                                    </imageView>
+                                </subviews>
+                                <color key="backgroundColor" white="1" alpha="1" colorSpace="calibratedWhite"/>
+                                <constraints>
+                                    <constraint firstItem="ce2-m6-WB9" firstAttribute="top" secondItem="kg1-Tb-BND" secondAttribute="top" constant="20" id="94Z-d8-afN"/>
+                                    <constraint firstAttribute="bottom" secondItem="2eP-Hg-uYT" secondAttribute="bottom" constant="20" id="fbU-Do-ZmY"/>
+                                    <constraint firstItem="ce2-m6-WB9" firstAttribute="centerX" secondItem="kg1-Tb-BND" secondAttribute="centerX" id="gkS-FU-G0C"/>
+                                    <constraint firstItem="2eP-Hg-uYT" firstAttribute="width" secondItem="kg1-Tb-BND" secondAttribute="width" constant="-40" id="jp2-Bg-k8Q"/>
+                                    <constraint firstItem="2eP-Hg-uYT" firstAttribute="centerX" secondItem="kg1-Tb-BND" secondAttribute="centerX" id="kfS-FP-ul4"/>
+                                    <constraint firstItem="2eP-Hg-uYT" firstAttribute="top" secondItem="ce2-m6-WB9" secondAttribute="bottom" constant="20" id="wh5-NT-YjS"/>
+                                </constraints>
+                                <userDefinedRuntimeAttributes>
+                                    <userDefinedRuntimeAttribute type="string" keyPath="heroID" value="promoHolder"/>
+                                    <userDefinedRuntimeAttribute type="string" keyPath="heroModifierString" value="translate(y:-300)"/>
+                                </userDefinedRuntimeAttributes>
+                            </view>
+                            <stackView opaque="NO" contentMode="scaleToFill" axis="vertical" spacing="20" translatesAutoresizingMaskIntoConstraints="NO" id="5GG-Jb-bfu">
+                                <rect key="frame" x="20" y="559" width="335" height="88"/>
+                                <subviews>
+                                    <button opaque="NO" contentMode="scaleToFill" verticalCompressionResistancePriority="749" contentHorizontalAlignment="center" contentVerticalAlignment="center" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="HYc-CU-Vuf" customClass="NUXSubmitButton" customModule="WordPress" customModuleProvider="target">
+                                        <rect key="frame" x="0.0" y="0.0" width="335" height="34"/>
+                                        <accessibility key="accessibilityConfiguration" identifier="nextButton"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="34" id="sma-zS-P3k"/>
+                                        </constraints>
+                                        <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                        <state key="normal" title="Log In">
+                                            <color key="titleColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                        </state>
+                                        <userDefinedRuntimeAttributes>
+                                            <userDefinedRuntimeAttribute type="string" keyPath="heroID" value="loginButton"/>
+                                            <userDefinedRuntimeAttribute type="string" keyPath="heroModifierString" value="translate(y:150)"/>
+                                        </userDefinedRuntimeAttributes>
+                                        <connections>
+                                            <action selector="handleSubmitButtonTapped:" destination="fwZ-QE-5et" eventType="touchUpInside" id="EGb-GJ-hWx"/>
+                                            <segue destination="hp1-uh-OnP" kind="show" id="nNr-gN-q3o"/>
+                                        </connections>
+                                    </button>
+                                    <button opaque="NO" contentMode="scaleToFill" verticalCompressionResistancePriority="749" contentHorizontalAlignment="center" contentVerticalAlignment="center" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="mrI-6k-E4m" customClass="NUXSubmitButton" customModule="WordPress" customModuleProvider="target">
+                                        <rect key="frame" x="0.0" y="54" width="335" height="34"/>
+                                        <accessibility key="accessibilityConfiguration" identifier="nextButton"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="34" id="p1v-EB-5D6"/>
+                                        </constraints>
+                                        <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                        <state key="normal" title="Create a WordPress site">
+                                            <color key="titleColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                        </state>
+                                        <userDefinedRuntimeAttributes>
+                                            <userDefinedRuntimeAttribute type="string" keyPath="heroID" value="createButton"/>
+                                            <userDefinedRuntimeAttribute type="string" keyPath="heroModifierString" value="translate(y:150)"/>
+                                        </userDefinedRuntimeAttributes>
+                                        <connections>
+                                            <action selector="handleSubmitButtonTapped:" destination="fwZ-QE-5et" eventType="touchUpInside" id="Ip6-TX-YPK"/>
+                                            <segue destination="QDy-AC-sAr" kind="show" id="oWR-ab-L61"/>
+                                        </connections>
+                                    </button>
+                                </subviews>
+                            </stackView>
+                        </subviews>
+                        <color key="backgroundColor" red="0.2298797518" green="0.52114713189999995" blue="0.72555196290000001" alpha="1" colorSpace="custom" customColorSpace="displayP3"/>
+                        <constraints>
+                            <constraint firstAttribute="trailing" secondItem="kg1-Tb-BND" secondAttribute="trailing" id="2Hu-R9-9sZ"/>
+                            <constraint firstItem="5GG-Jb-bfu" firstAttribute="top" secondItem="kg1-Tb-BND" secondAttribute="bottom" constant="20" id="3k9-0E-9Qv"/>
+                            <constraint firstItem="5GG-Jb-bfu" firstAttribute="leading" secondItem="kGL-rw-Q99" secondAttribute="leading" constant="20" id="BCX-sM-1tH"/>
+                            <constraint firstAttribute="trailing" secondItem="5GG-Jb-bfu" secondAttribute="trailing" constant="20" id="HQr-Rr-DUC"/>
+                            <constraint firstItem="kg1-Tb-BND" firstAttribute="top" secondItem="kGL-rw-Q99" secondAttribute="top" id="HvN-g4-flp"/>
+                            <constraint firstItem="kg1-Tb-BND" firstAttribute="leading" secondItem="kGL-rw-Q99" secondAttribute="leading" id="fhU-L0-dBw"/>
+                            <constraint firstItem="PXy-mW-dQV" firstAttribute="top" secondItem="5GG-Jb-bfu" secondAttribute="bottom" constant="20" id="xbc-qb-KIG"/>
+                        </constraints>
+                    </view>
+                    <userDefinedRuntimeAttributes>
+                        <userDefinedRuntimeAttribute type="boolean" keyPath="isHeroEnabled" value="YES"/>
+                    </userDefinedRuntimeAttributes>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="BRo-Sd-o27" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="-879" y="-596"/>
+        </scene>
     </scenes>
     <resources>
         <image name="fake-promo" width="305" height="460"/>
@@ -1964,9 +2073,9 @@
         <image name="logo-wpcom-vertical" width="152" height="106"/>
     </resources>
     <inferredMetricsTieBreakers>
+        <segue reference="doZ-HT-Y0R"/>
         <segue reference="kZV-1E-vsW"/>
         <segue reference="FUp-v0-vkX"/>
-        <segue reference="uRH-55-Cmq"/>
         <segue reference="Ncm-cS-fDT"/>
     </inferredMetricsTieBreakers>
 </document>
