@@ -87,7 +87,7 @@
         }
     } else if (mediaType == MediaTypeVideo) {
         if (![post.blog isHostedAtWPcom]) {
-            assetUTI = (__bridge NSString *)kUTTypeQuickTimeMovie;
+            assetUTI = (__bridge NSString *)kUTTypeMPEG4;
             extension = [self extensionForUTI:assetUTI];
         }
     }
@@ -111,9 +111,9 @@
     }
 
     error = nil;
-    NSURL *mediaURL = [MediaService localMediaURLWith:mediaName
-                                        fileExtension:extension
-                                                error:&error];
+    NSURL *mediaURL = [MediaLibrary makeLocalMediaURLWithFilename:mediaName
+                                                    fileExtension:extension
+                                                            error:&error];
     if (error) {
         if (completion) {
             completion(nil, error);
@@ -121,9 +121,9 @@
         return;
     }
     error = nil;
-    NSURL *mediaThumbnailURL = [MediaService localMediaURLWith:[MediaService mediaFilenameAppendingThumbnail:[mediaURL lastPathComponent]]
-                                                 fileExtension:[self extensionForUTI:[asset defaultThumbnailUTI]]
-                                                         error:&error];
+    NSURL *mediaThumbnailURL = [MediaLibrary makeLocalMediaURLWithFilename:[MediaLibrary mediaFilenameAppendingThumbnail:[mediaURL lastPathComponent]]
+                                                             fileExtension:[self extensionForUTI:[asset defaultThumbnailUTI]]
+                                                                     error:&error];
     if (error) {
         if (completion) {
             completion(nil, error);
@@ -206,8 +206,8 @@
         Media *media = [Media makeMediaWithPost:post];
         media.postID = post.postID;
         media.filename = [mediaURL lastPathComponent];
-        media.absoluteLocalURL = [mediaURL path];
-        media.absoluteThumbnailLocalURL = [mediaThumbnailURL path];
+        media.absoluteLocalURL = mediaURL;
+        media.absoluteThumbnailLocalURL = mediaThumbnailURL;
         NSNumber * fileSize;
         if ([mediaURL getResourceValue:&fileSize forKey:NSURLFileSizeKey error:nil]) {
             media.filesize = @([fileSize longLongValue] / 1024);
@@ -525,24 +525,16 @@
                             success:(void (^)(NSString *videoURL, NSString *posterURL))success
                             failure:(void (^)(NSError *error))failure
 {
-    NSString *entityName = NSStringFromClass([Media class]);
-    NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:entityName];
-    request.predicate = [NSPredicate predicateWithFormat:@"videopressGUID = %@", videoPressID];
-    NSError *error = nil;
-    Media *media = [[self.managedObjectContext executeFetchRequest:request error:&error] firstObject];
-    if (media) {
-        NSString  *posterURL = media.absoluteThumbnailLocalURL;
-        if (!posterURL) {
-            posterURL = media.remoteThumbnailURL;
-        }
+    id<MediaServiceRemote> remote = [self remoteForBlog:blog];
+    [remote getVideoURLFromVideoPressID:videoPressID success:^(NSURL *videoURL, NSURL *posterURL) {
         if (success) {
-            success(media.remoteURL, posterURL);
+            success(videoURL.absoluteString, posterURL.absoluteString);
         }
-    } else {
+    } failure:^(NSError * error) {
         if (failure) {
             failure(error);
         }
-    }
+    }];
 }
 
 - (void)syncMediaLibraryForBlog:(Blog *)blog
@@ -589,7 +581,7 @@
         BOOL isPrivate = media.blog.isPrivate;
 
         // search if there is a local copy of the file already
-        NSString *pathForFile;
+        NSURL *fileURL;
         CGSize mediaOriginalSize = CGSizeMake([media.width floatValue], [media.height floatValue]);
         CGSize size = requestSize;
         if (CGSizeEqualToSize(requestSize, CGSizeZero)) {
@@ -597,21 +589,21 @@
         }
         CGSize availableSize = CGSizeZero;
         if (media.mediaType == MediaTypeImage) {
-            pathForFile = media.absoluteThumbnailLocalURL;
-            availableSize = [MediaService imageSizeForMediaAtPath:pathForFile];
+            fileURL = media.absoluteThumbnailLocalURL;
+            availableSize = [MediaLibrary imageSizeForMediaAtFileURL:fileURL];
             if (size.height > availableSize.height && size.width > availableSize.width) {
-                pathForFile = media.absoluteLocalURL;
-                availableSize = [MediaService imageSizeForMediaAtPath:pathForFile];
+                fileURL = media.absoluteLocalURL;
+                availableSize = [MediaLibrary imageSizeForMediaAtFileURL:fileURL];
             }
         } else if (media.mediaType == MediaTypeVideo) {
-            pathForFile = media.absoluteThumbnailLocalURL;
-            availableSize = [MediaService imageSizeForMediaAtPath:pathForFile];
+            fileURL = media.absoluteThumbnailLocalURL;
+            availableSize = [MediaLibrary imageSizeForMediaAtFileURL:fileURL];
         }
 
         // check if the available local image is equal or larger than the requested size
         if (availableSize.height >= size.height && availableSize.width >= size.width) {
             [[[self class] queueForResizeMediaOperations] addOperationWithBlock:^{
-                UIImage *image = [UIImage imageWithContentsOfFile:pathForFile];
+                UIImage *image = [UIImage imageWithContentsOfFile:fileURL.path];
                 if (success) {
                     if (!CGSizeEqualToSize(image.size, size)){
                         image = [image resizedImage:size interpolationQuality:kCGInterpolationMedium];
@@ -624,7 +616,8 @@
 
         // No Image available so let's download it
         NSURL *remoteURL = nil;
-        if (media.mediaType == MediaTypeVideo) {
+        BOOL mediaIsVideo = media.mediaType == MediaTypeVideo;
+        if (mediaIsVideo) {
             remoteURL = [NSURL URLWithString:media.remoteThumbnailURL];
         } else if (media.mediaType == MediaTypeImage) {
             NSString *remote = media.remoteURL;
@@ -654,19 +647,19 @@
 
             [self.managedObjectContext performBlock:^{
                 NSError *error = nil;
-                NSURL *fileURL = [MediaService localMediaURLWith:[MediaService mediaFilenameAppendingThumbnail:media.filename]
-                                                   fileExtension:[self extensionForUTI:(__bridge NSString*)kUTTypeJPEG]
-                                                           error:&error];
+                NSURL *fileURL = [MediaLibrary makeLocalMediaURLWithFilename:[MediaLibrary mediaFilenameAppendingThumbnail:media.filename]
+                                                               fileExtension:[self extensionForUTI:(__bridge NSString*)kUTTypeJPEG]
+                                                                       error:&error];
                 if (error) {
                     if (failure) {
                         failure(error);
                     }
                     return;
                 }
-                if (CGSizeEqualToSize(size, mediaOriginalSize)) {
-                    media.absoluteLocalURL = [fileURL path];
+                if (CGSizeEqualToSize(size, mediaOriginalSize) && !mediaIsVideo) {
+                    media.absoluteLocalURL = fileURL;
                 } else {
-                    media.absoluteThumbnailLocalURL = [fileURL path];
+                    media.absoluteThumbnailLocalURL = fileURL;
                 }
                 [self.managedObjectContext save:nil];
                 [[[self class] queueForResizeMediaOperations] addOperationWithBlock:^{                    
@@ -822,155 +815,5 @@
     remoteMedia.postID = media.postID;
     return remoteMedia;
 }
-
-#pragma mark - Media cleanup
-
-+ (void)cleanUnusedMediaFilesFromMediaCacheFolder
-{
-    DDLogInfo(@"%@ %@", self, NSStringFromSelector(_cmd));
-
-    NSManagedObjectContext *context = [[ContextManager sharedInstance] newDerivedContext];
-    [context performBlock:^{
-
-        // Fetch Media URL's and return them as Dictionary Results:
-        // This way we'll avoid any CoreData Faulting Exception due to deletions performed on another context
-        NSString *localUrlProperty = NSStringFromSelector(@selector(localURL));
-        NSString *localThumbUrlProperty = NSStringFromSelector(@selector(localThumbnailURL));
-
-        NSFetchRequest *fetchRequest = [[NSFetchRequest alloc] init];
-        fetchRequest.entity = [NSEntityDescription entityForName:NSStringFromClass([Media class]) inManagedObjectContext:context];
-        fetchRequest.predicate = [NSPredicate predicateWithFormat:@"blog != NULL"];
-
-        fetchRequest.propertiesToFetch = @[ localUrlProperty, localThumbUrlProperty ];
-        fetchRequest.resultType = NSDictionaryResultType;
-
-        NSError *error = nil;
-        NSArray *mediaObjectsToKeep = [context executeFetchRequest:fetchRequest error:&error];
-
-        if (error) {
-            DDLogError(@"Error cleaning up tmp files: %@", error.localizedDescription);
-            return;
-        }
-
-        // Get a references to media files linked in a post
-        DDLogInfo(@"%i media items to check for cleanup", mediaObjectsToKeep.count);
-        NSString *documentsDirectory    = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        NSMutableSet *pathsToKeep       = [NSMutableSet set];
-        for (NSDictionary *mediaDict in mediaObjectsToKeep) {
-            NSString *path = mediaDict[localUrlProperty];
-            if (path) {
-                NSString *absolutePath = [documentsDirectory stringByAppendingPathComponent:path];
-                [pathsToKeep addObject:absolutePath];
-            }
-
-            NSString *thumbPath = mediaDict[localThumbUrlProperty];
-            if (thumbPath) {
-                NSString *absoluteThumbPath = [documentsDirectory stringByAppendingPathComponent:thumbPath];
-                [pathsToKeep addObject:absoluteThumbPath];
-            }
-        }
-
-        // Search for media extension files within the Media Folder
-        NSSet *mediaExtensions = [NSSet setWithObjects:@"jpg", @"jpeg", @"png", @"gif", @"mov", @"avi", @"mp4", nil];
-        error = nil;
-        NSArray *contentsOfDir = [[NSFileManager defaultManager] contentsOfDirectoryAtURL:[self localMediaDirectoryAndReturnError:&error]
-                                                               includingPropertiesForKeys:nil
-                                                                                  options:NSDirectoryEnumerationSkipsHiddenFiles
-                                                                                    error:nil];
-        if (error) {
-            DDLogError(@"Error cleaning up tmp files while accessing Media directory: %@", error.localizedDescription);
-            return;
-        }
-
-        for (NSURL *currentURL in contentsOfDir) {
-            NSString *filepath = [[currentURL URLByResolvingSymlinksInPath] path];
-            NSString *extension = filepath.pathExtension.lowercaseString;
-            if (![mediaExtensions containsObject:extension] ||
-                [pathsToKeep containsObject:filepath]) {
-                continue;
-            }
-
-            NSError *nukeError = nil;
-            if ([[NSFileManager defaultManager] fileExistsAtPath:filepath] &&
-                [[NSFileManager defaultManager] removeItemAtPath:filepath error:&nukeError] == NO) {
-                DDLogError(@"Error [%@] while nuking unused Media at path [%@]", nukeError.localizedDescription, filepath);
-            }
-        }
-    }];
-}
-
-+ (void)cleanMediaCacheFolder
-{
-    DDLogInfo(@"%@ %@", self, NSStringFromSelector(_cmd));
-
-    NSManagedObjectContext *context = [[ContextManager sharedInstance] newDerivedContext];
-    [context performBlockAndWait:^{
-
-        // Fetch Media URL's and return them as Dictionary Results:
-        // This way we'll avoid any CoreData Faulting Exception due to deletions performed on another context
-        NSString *localUrlProperty = NSStringFromSelector(@selector(localURL));
-        NSString *localThumbUrlProperty = NSStringFromSelector(@selector(localThumbnailURL));
-
-        NSFetchRequest *fetchRequest = [[NSFetchRequest alloc] init];
-        fetchRequest.entity = [NSEntityDescription entityForName:NSStringFromClass([Media class]) inManagedObjectContext:context];
-        fetchRequest.predicate = [NSPredicate predicateWithFormat:@"remoteURL == NULL"];
-
-        fetchRequest.propertiesToFetch = @[ localUrlProperty, localThumbUrlProperty ];
-        fetchRequest.resultType = NSDictionaryResultType;
-
-        NSError *error = nil;
-        NSArray *mediaObjectsToKeep = [context executeFetchRequest:fetchRequest error:&error];
-
-        if (error) {
-            DDLogError(@"Error cleaning up tmp files: %@", error.localizedDescription);
-            return;
-        }
-
-        // Get a references to media files that only exist locally
-        DDLogInfo(@"%i media items to check for cleanup", mediaObjectsToKeep.count);
-        NSString *documentsDirectory    = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        NSMutableSet *pathsToKeep       = [NSMutableSet set];
-        for (NSDictionary *mediaDict in mediaObjectsToKeep) {
-            NSString *path = mediaDict[localUrlProperty];
-            if (path) {
-                NSString *absolutePath = [documentsDirectory stringByAppendingPathComponent:path];
-                [pathsToKeep addObject:absolutePath];
-            }
-
-            NSString *thumbPath = mediaDict[localThumbUrlProperty];
-            if (thumbPath) {
-                NSString *absoluteThumbPath = [documentsDirectory stringByAppendingPathComponent:thumbPath];
-                [pathsToKeep addObject:absoluteThumbPath];
-            }
-        }
-
-        error = nil;
-        [self cleanFolderURL:[self localMediaDirectoryAndReturnError:&error] exceptFiles:pathsToKeep];
-        if (error) {
-            DDLogError(@"Error cleaning up tmp files while accessing Media directory: %@", error.localizedDescription);
-        }
-    }];
-}
-
-+ (void)cleanFolderURL:(NSURL *)folderURL exceptFiles:(NSSet *)exceptFiles {
-    NSArray *contentsOfDir = [[NSFileManager defaultManager] contentsOfDirectoryAtURL:folderURL
-                                                           includingPropertiesForKeys:nil
-                                                                              options:NSDirectoryEnumerationSkipsHiddenFiles
-                                                                                error:nil];
-
-    for (NSURL *currentURL in contentsOfDir) {
-        NSString *filepath = [[currentURL URLByResolvingSymlinksInPath] path];        
-        if ([exceptFiles containsObject:filepath]) {
-            continue;
-        }
-
-        NSError *nukeError = nil;
-        if ([[NSFileManager defaultManager] fileExistsAtPath:filepath] &&
-            [[NSFileManager defaultManager] removeItemAtPath:filepath error:&nukeError] == NO) {
-            DDLogError(@"Error [%@] while nuking unused Media at path [%@]", nukeError.localizedDescription, filepath);
-        }
-    }
-}
-
 
 @end

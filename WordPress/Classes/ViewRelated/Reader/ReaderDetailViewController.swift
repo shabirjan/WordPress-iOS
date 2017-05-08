@@ -215,7 +215,7 @@ open class ReaderDetailViewController: UIViewController, UIViewControllerRestora
     open override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
 
-        setBarsHidden(false)
+        setBarsHidden(false, animated: animated)
 
         NotificationCenter.default.removeObserver(self, name: NSNotification.Name.UIApplicationDidBecomeActive, object: nil)
     }
@@ -590,11 +590,16 @@ open class ReaderDetailViewController: UIViewController, UIViewControllerRestora
         }
 
         // Byline
-        let date = NSDate(timeIntervalSinceReferenceDate: (post?.dateForDisplay().timeIntervalSinceReferenceDate)!)
-        var byline = date.mediumString()
-        if let author = post?.authorForDisplay() {
-            byline = String(format: "%@ · %@", author, byline)
+        let author = post?.authorForDisplay()
+        let dateAsString = post?.dateForDisplay()?.mediumString()
+        let byline: String
+
+        if let author = author, let date = dateAsString {
+            byline = author + " · " + date
+        } else {
+            byline = author ?? dateAsString ?? String()
         }
+
         bylineLabel.text = byline
     }
 
@@ -808,17 +813,17 @@ open class ReaderDetailViewController: UIViewController, UIViewControllerRestora
         WPAppAnalytics.track(.readerSitePreviewed, withProperties: properties)
     }
 
-    func setBarsHidden(_ hidden: Bool) {
+    func setBarsHidden(_ hidden: Bool, animated: Bool = true) {
         if (navigationController?.isNavigationBarHidden == hidden) {
             return
         }
 
         if (hidden) {
             // Hides the navbar and footer view
-            navigationController?.setNavigationBarHidden(true, animated: true)
+            navigationController?.setNavigationBarHidden(true, animated: animated)
             currentPreferredStatusBarStyle = .default
             footerViewHeightConstraint.constant = 0.0
-            UIView.animate(withDuration: 0.3,
+            UIView.animate(withDuration: animated ? 0.3 : 0,
                 delay: 0.0,
                 options: [.beginFromCurrentState, .allowUserInteraction],
                 animations: {
@@ -829,10 +834,10 @@ open class ReaderDetailViewController: UIViewController, UIViewControllerRestora
             // Shows the navbar and footer view
             let pinToBottom = isScrollViewAtBottom()
 
-            navigationController?.setNavigationBarHidden(false, animated: true)
+            navigationController?.setNavigationBarHidden(false, animated: animated)
             currentPreferredStatusBarStyle = .lightContent
             footerViewHeightConstraint.constant = footerViewHeightConstraintConstant
-            UIView.animate(withDuration: 0.3,
+            UIView.animate(withDuration: animated ? 0.3 : 0,
                 delay: 0.0,
                 options: [.beginFromCurrentState, .allowUserInteraction],
                 animations: {

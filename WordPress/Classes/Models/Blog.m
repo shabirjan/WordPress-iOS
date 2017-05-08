@@ -71,6 +71,7 @@ NSString * const OptionsKeyPublicizeDisabled = @"publicize_permanently_disabled"
 @dynamic settings;
 @dynamic planID;
 @dynamic planTitle;
+@dynamic hasPaidPlan;
 @dynamic sharingButtons;
 @dynamic capabilities;
 
@@ -437,10 +438,11 @@ NSString * const OptionsKeyPublicizeDisabled = @"publicize_permanently_disabled"
             return [self supportsRestApi];
         case BlogFeatureSharing:
             return [self supportsSharing];
+        case BlogFeatureOAuth2Login:
+            return [self isHostedAtWPcom];
         case BlogFeatureCommentLikes:
         case BlogFeatureReblog:
         case BlogFeatureMentions:
-        case BlogFeatureOAuth2Login:
         case BlogFeaturePlans:
             return [self isHostedAtWPcom] && [self isAdmin];
         case BlogFeaturePushNotifications:

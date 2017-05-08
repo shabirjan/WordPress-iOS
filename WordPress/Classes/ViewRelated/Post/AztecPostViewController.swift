@@ -6,11 +6,13 @@ import WordPressShared
 import AFNetworking
 import WPMediaPicker
 import SVProgressHUD
-
+import WordPressComAnalytics
+import AVKit
 
 // MARK: - Aztec's Native Editor!
 //
 class AztecPostViewController: UIViewController {
+    fileprivate let analyticsEditorSourceValue = "aztec"
 
     /// Closure to be executed when the editor gets closed
     ///
@@ -65,29 +67,44 @@ class AztecPostViewController: UIViewController {
     }()
 
 
-    /// Title's TextField
+    /// Title's UITextView
     ///
-    fileprivate(set) lazy var titleTextField: UITextField = {
-        let placeholderText = NSLocalizedString("Title", comment: "Placeholder for the post title.")
-        let tf = UITextField()
+    fileprivate(set) lazy var titleTextField: UITextView = {
+        let textField = UITextView()
 
-        tf.accessibilityLabel = NSLocalizedString("Title", comment: "Post title")
-        tf.attributedPlaceholder = NSAttributedString(string: placeholderText,
-                                                      attributes: [NSForegroundColorAttributeName: Colors.title])
-        tf.font = Fonts.title
-        tf.returnKeyType = .next
-        tf.textColor = UIColor.darkText
-        tf.translatesAutoresizingMaskIntoConstraints = false
+        textField.accessibilityLabel = NSLocalizedString("Title", comment: "Post title")
+        textField.delegate = self
+        textField.font = Fonts.title
+        textField.returnKeyType = .next
+        textField.textColor = UIColor.darkText
+        textField.typingAttributes = [NSForegroundColorAttributeName: UIColor.darkText, NSFontAttributeName: Fonts.title]
+        textField.translatesAutoresizingMaskIntoConstraints = false
 
-        let toolbar = self.createToolbar(htmlMode: true)
+        textField.isScrollEnabled = false
+        textField.backgroundColor = .clear
+
+        let toolbar = self.createToolbar(htmlMode: false)
         toolbar.formatter = self
-        tf.inputAccessoryView = toolbar
+        textField.inputAccessoryView = toolbar
 
-        tf.addTarget(self, action: #selector(titleTextFieldDidChange), for: [.editingChanged])
-
-        return tf
+        return textField
     }()
 
+    fileprivate(set) lazy var titlePlaceholderLabel: UILabel = {
+        let placeholderText = NSLocalizedString("Title", comment: "Placeholder for the post title.")
+        let titlePlaceholderLabel = UILabel()
+
+        titlePlaceholderLabel.attributedText = NSAttributedString(string: placeholderText,
+                                                      attributes: [NSForegroundColorAttributeName: Colors.title, NSFontAttributeName: Fonts.title])
+        titlePlaceholderLabel.sizeToFit()
+        titlePlaceholderLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        return titlePlaceholderLabel
+    }()
+
+    fileprivate var titleHeightConstraint: NSLayoutConstraint!
+    fileprivate var titleTopConstraint: NSLayoutConstraint!
+    fileprivate var textPlaceholderTopConstraint: NSLayoutConstraint!
 
     /// Separator View
     ///
@@ -238,7 +255,7 @@ class AztecPostViewController: UIViewController {
 
     /// Selected Text Attachment
     ///
-    fileprivate var currentSelectedAttachment: TextAttachment?
+    fileprivate var currentSelectedAttachment: ImageAttachment?
 
 
     /// Last Interface Element that was a First Responder
@@ -310,6 +327,9 @@ class AztecPostViewController: UIViewController {
         configureView()
         configureSubviews()
 
+        // Attachment Custom Image Providers
+        registerAttachmentImageProviders()
+
         // UI elements might get their properties reset when the view is effectively loaded. Refresh it all!
         refreshInterface()
 
@@ -358,6 +378,33 @@ class AztecPostViewController: UIViewController {
     }
 
 
+    // MARK: - Title and Title placeholder position methods
+    func updateTitlePosition() {
+        let referenceView: UITextView = mode == .richText ? richTextView : htmlTextView
+        titleTopConstraint.constant = -(referenceView.contentOffset.y+referenceView.contentInset.top)
+
+        var contentInset = referenceView.contentInset
+        contentInset.top = (titleHeightConstraint.constant + separatorView.frame.height)
+        referenceView.contentInset = contentInset
+
+        textPlaceholderTopConstraint.constant = referenceView.textContainerInset.top + referenceView.contentInset.top
+    }
+
+    func updateTitleHeight() {
+        let referenceView: UITextView = mode == .richText ? richTextView : htmlTextView
+
+        let sizeThatShouldFitTheContent = titleTextField.sizeThatFits(CGSize(width:view.frame.width - ( 2 * Constants.defaultMargin), height: CGFloat.greatestFiniteMagnitude))
+        let insets = titleTextField.textContainerInset
+        titleHeightConstraint.constant = max(sizeThatShouldFitTheContent.height, titleTextField.font!.lineHeight + insets.top + insets.bottom)
+
+        textPlaceholderTopConstraint.constant = referenceView.textContainerInset.top + referenceView.contentInset.top
+
+        var contentInset = referenceView.contentInset
+        contentInset.top = (titleHeightConstraint.constant + separatorView.frame.height)
+        referenceView.contentInset = contentInset
+        referenceView.setContentOffset(CGPoint(x:0, y: -contentInset.top), animated: false)
+    }
+
     // MARK: - Configuration Methods
 
     override func updateViewConstraints() {
@@ -366,24 +413,37 @@ class AztecPostViewController: UIViewController {
 
         let defaultMargin = Constants.defaultMargin
 
+        titleHeightConstraint = titleTextField.heightAnchor.constraint(equalToConstant: titleTextField.font!.lineHeight)
+        titleTopConstraint = titleTextField.topAnchor.constraint(equalTo: view.topAnchor, constant: -richTextView.contentOffset.y)
+        textPlaceholderTopConstraint = placeholderLabel.topAnchor.constraint(equalTo: richTextView.topAnchor, constant: richTextView.textContainerInset.top + richTextView.contentInset.top)
+        updateTitleHeight()
+
         NSLayoutConstraint.activate([
             titleTextField.leftAnchor.constraint(equalTo: view.leftAnchor, constant: defaultMargin),
             titleTextField.rightAnchor.constraint(equalTo: view.rightAnchor, constant: -defaultMargin),
-            titleTextField.topAnchor.constraint(equalTo: view.topAnchor, constant: defaultMargin),
-            titleTextField.heightAnchor.constraint(equalToConstant: titleTextField.font!.lineHeight)
+            titleTopConstraint,
+            titleHeightConstraint
+            ])
+
+        let insets = titleTextField.textContainerInset
+        NSLayoutConstraint.activate([
+            titlePlaceholderLabel.leftAnchor.constraint(equalTo: titleTextField.leftAnchor, constant: insets.left + titleTextField.textContainer.lineFragmentPadding),
+            titlePlaceholderLabel.rightAnchor.constraint(equalTo: titleTextField.rightAnchor, constant: -insets.right),
+            titlePlaceholderLabel.topAnchor.constraint(equalTo: titleTextField.topAnchor, constant: insets.top),
+            titlePlaceholderLabel.heightAnchor.constraint(equalToConstant: titleTextField.font!.lineHeight)
             ])
 
         NSLayoutConstraint.activate([
             separatorView.leftAnchor.constraint(equalTo: view.leftAnchor, constant: defaultMargin),
             separatorView.rightAnchor.constraint(equalTo: view.rightAnchor, constant: -defaultMargin),
-            separatorView.topAnchor.constraint(equalTo: titleTextField.bottomAnchor, constant: defaultMargin),
+            separatorView.topAnchor.constraint(equalTo: titleTextField.bottomAnchor, constant: 0),
             separatorView.heightAnchor.constraint(equalToConstant: separatorView.frame.height)
             ])
 
         NSLayoutConstraint.activate([
             richTextView.leftAnchor.constraint(equalTo: view.leftAnchor, constant: defaultMargin),
             richTextView.rightAnchor.constraint(equalTo: view.rightAnchor, constant: -defaultMargin),
-            richTextView.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: defaultMargin),
+            richTextView.topAnchor.constraint(equalTo: view.topAnchor, constant: 0),
             richTextView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -defaultMargin)
             ])
 
@@ -397,7 +457,7 @@ class AztecPostViewController: UIViewController {
         NSLayoutConstraint.activate([
             placeholderLabel.leftAnchor.constraint(equalTo: richTextView.leftAnchor, constant: Constants.placeholderPadding.left),
             placeholderLabel.rightAnchor.constraint(equalTo: richTextView.rightAnchor, constant: Constants.placeholderPadding.right),
-            placeholderLabel.topAnchor.constraint(equalTo: richTextView.topAnchor, constant: Constants.placeholderPadding.top),
+            textPlaceholderTopConstraint,
             placeholderLabel.bottomAnchor.constraint(lessThanOrEqualTo: richTextView.bottomAnchor, constant: Constants.placeholderPadding.bottom)
             ])
 
@@ -435,13 +495,26 @@ class AztecPostViewController: UIViewController {
     }
 
     func configureSubviews() {
-        view.addSubview(titleTextField)
-        view.addSubview(separatorView)
-        view.addSubview(placeholderLabel)
         view.addSubview(richTextView)
         view.addSubview(htmlTextView)
+        view.addSubview(titleTextField)
+        view.addSubview(titlePlaceholderLabel)
+        view.addSubview(separatorView)
+        view.addSubview(placeholderLabel)
         mediaProgressView.isHidden = true
         view.addSubview(mediaProgressView)
+    }
+
+    func registerAttachmentImageProviders() {
+        let providers: [TextViewAttachmentImageProvider] = [
+            MoreAttachmentRenderer(),
+            CommentAttachmentRenderer(font: Fonts.regular),
+            HTMLAttachmentRenderer(font: Fonts.regular)
+        ]
+
+        for provider in providers {
+            richTextView.registerAttachmentImageProvider(provider)
+        }
     }
 
     func startListeningToNotifications() {
@@ -547,11 +620,16 @@ class AztecPostViewController: UIViewController {
     }
 
     fileprivate func refreshInsets(forKeyboardFrame keyboardFrame: CGRect) {
-        htmlTextView.scrollIndicatorInsets = UIEdgeInsets(top: 0, left: 0, bottom: view.frame.maxY - keyboardFrame.minY, right: 0)
-        htmlTextView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: view.frame.maxY - keyboardFrame.minY, right: 0)
+        let referenceView: UIScrollView = mode == .richText ? richTextView : htmlTextView
 
-        richTextView.scrollIndicatorInsets = UIEdgeInsets(top: 0, left: 0, bottom: view.frame.maxY - keyboardFrame.minY, right: 0)
-        richTextView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: view.frame.maxY - keyboardFrame.minY, right: 0)
+        let scrollInsets = UIEdgeInsets(top: referenceView.scrollIndicatorInsets.top, left: 0, bottom: view.frame.maxY - keyboardFrame.minY, right: 0)
+        let contentInsets  = UIEdgeInsets(top: referenceView.contentInset.top, left: 0, bottom: view.frame.maxY - keyboardFrame.minY, right: 0)
+
+        htmlTextView.scrollIndicatorInsets = scrollInsets
+        htmlTextView.contentInset = contentInsets
+
+        richTextView.scrollIndicatorInsets = scrollInsets
+        richTextView.contentInset = contentInsets
     }
 
 
@@ -591,6 +669,8 @@ extension AztecPostViewController {
 //
 extension AztecPostViewController {
     @IBAction func publishButtonTapped(sender: UIBarButtonItem) {
+        trackPostSave(stat: postEditorStateContext.publishActionAnalyticsStat)
+
         publishTapped(dismissWhenDone: true)
     }
 
@@ -600,6 +680,10 @@ extension AztecPostViewController {
                 self.post.status = .draft
             } else if self.postEditorStateContext.secondaryPublishButtonAction == .publish {
                 self.post.status = .publish
+            }
+
+            if let stat = self.postEditorStateContext.secondaryPublishActionAnalyticsStat {
+                self.trackPostSave(stat: stat)
             }
 
             self.publishTapped(dismissWhenDone: dismissWhenDone)
@@ -627,11 +711,13 @@ extension AztecPostViewController {
                 // The post is a local draft or an autosaved draft: Discard or Save
                 alertController.addDefaultActionWithTitle(NSLocalizedString("Save Draft", comment: "Button shown if there are unsaved changes and the author is trying to move away from the post.")) { _ in
                     self.post.status = .draft
+                    self.trackPostSave(stat: self.postEditorStateContext.publishActionAnalyticsStat)
                     self.publishTapped(dismissWhenDone: true)
                 }
             } else if post.status == .draft {
                 // The post was already a draft
                 alertController.addDefaultActionWithTitle(NSLocalizedString("Update Draft", comment: "Button shown if there are unsaved changes and the author is trying to move away from an already published/saved post.")) { _ in
+                    self.trackPostSave(stat: self.postEditorStateContext.publishActionAnalyticsStat)
                     self.publishTapped(dismissWhenDone: true)
                 }
             }
@@ -659,6 +745,7 @@ extension AztecPostViewController {
             alertController.addDefaultActionWithTitle(MediaUploadingAlert.acceptTitle) { alertAction in
                 self.removeFailedMedia()
                 // Failed media is removed, try again.
+                // Note: Intentionally not tracking another analytics stat here (no appropriate one exists yet)
                 self.publishTapped(dismissWhenDone: dismissWhenDone)
             }
 
@@ -681,10 +768,9 @@ extension AztecPostViewController {
             if let error = error {
                 DDLogSwift.logError("Error publishing post: \(error.localizedDescription)")
 
-                SVProgressHUD.showError(withStatus: self.postEditorStateContext.publishErrorText)
+                SVProgressHUD.showDismissibleError(withStatus: self.postEditorStateContext.publishErrorText)
                 generator.notificationOccurred(.error)
             } else if let uploadedPost = uploadedPost {
-                // TODO: Determine if this is necessary; if it is then ensure state machine is updated
                 self.post = uploadedPost
 
                 generator.notificationOccurred(.success)
@@ -714,6 +800,29 @@ extension AztecPostViewController {
 
     @IBAction func moreWasPressed() {
         displayMoreSheet()
+    }
+
+    private func trackPostSave(stat: WPAnalyticsStat) {
+        guard stat != .editorSavedDraft && stat != .editorQuickSavedDraft else {
+            WPAppAnalytics.track(stat, withProperties:[WPAppAnalyticsKeyEditorSource: analyticsEditorSourceValue], with:post.blog)
+            return
+        }
+
+        let originalWordCount = post.original?.content?.wordCount() ?? 0
+        let wordCount = post.content?.wordCount() ?? 0
+        var properties: [String: Any] = ["word_count": wordCount, WPAppAnalyticsKeyEditorSource: analyticsEditorSourceValue]
+        if post.hasRemote() {
+            properties["word_diff_count"] = originalWordCount
+        }
+
+        if stat == .editorPublishedPost {
+            properties[WPAnalyticsStatEditorPublishedPostPropertyCategory] = post.hasCategories()
+            properties[WPAnalyticsStatEditorPublishedPostPropertyPhoto] = post.hasPhoto()
+            properties[WPAnalyticsStatEditorPublishedPostPropertyTag] = post.hasTags()
+            properties[WPAnalyticsStatEditorPublishedPostPropertyVideo] = post.hasVideo()
+        }
+
+        WPAppAnalytics.track(stat, withProperties: properties, with: post)
     }
 }
 
@@ -897,6 +1006,14 @@ extension AztecPostViewController : UITextViewDelegate {
     func textViewDidChange(_ textView: UITextView) {
         mapUIContentToPostAndSave()
         refreshPlaceholderVisibility()
+        if textView == titleTextField {
+            updateTitleHeight()
+            refreshPlaceholderVisibility()
+        }
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        updateTitlePosition()
     }
 }
 
@@ -957,6 +1074,7 @@ extension AztecPostViewController {
 
     func refreshPlaceholderVisibility() {
         placeholderLabel.isHidden = richTextView.isHidden || !richTextView.text.isEmpty
+        titlePlaceholderLabel.isHidden = !titleTextField.text.isEmpty
     }
 }
 
@@ -992,7 +1110,12 @@ extension AztecPostViewController : Aztec.FormatBarDelegate {
             toggleHeader()
         case .horizontalruler:
             insertHorizontalRuler()
+        case .more:
+            insertMore()
+        case .p:
+            break
         }
+
         updateFormatBar()
     }
 
@@ -1194,7 +1317,11 @@ extension AztecPostViewController : Aztec.FormatBarDelegate {
     }
 
     func insertHorizontalRuler() {
-        richTextView.replaceWithHorizontalRuler(at: richTextView.selectedRange)
+        richTextView.replaceRangeWithHorizontalRuler(richTextView.selectedRange)
+    }
+
+    func insertMore() {
+        richTextView.replaceRangeWithCommentAttachment(richTextView.selectedRange, text: Constants.moreAttachmentText)
     }
 
     func changeRichTextInputView(to: UIView?) {
@@ -1232,24 +1359,32 @@ extension AztecPostViewController : Aztec.FormatBarDelegate {
 
 
     // MARK: - Toolbar creation
+    func makeToolbarButton(identifier: FormattingIdentifier) -> FormatBarItem {
+        let button = FormatBarItem(image: identifier.iconImage, identifier: identifier)
+        button.accessibilityLabel = identifier.accessibilityLabel
+        button.accessibilityIdentifier = identifier.accessibilityIdentifier
+        return button
+    }
 
     func createToolbar(htmlMode: Bool) -> Aztec.FormatBar {
+
         let scrollableItems = [
-            FormatBarItem(image: Gridicon.iconOfType(.addImage), identifier: .media),
-            FormatBarItem(image: Gridicon.iconOfType(.heading), identifier: .header),
-            FormatBarItem(image: Gridicon.iconOfType(.bold), identifier: .bold),
-            FormatBarItem(image: Gridicon.iconOfType(.italic), identifier: .italic),
-            FormatBarItem(image: Gridicon.iconOfType(.underline), identifier: .underline),
-            FormatBarItem(image: Gridicon.iconOfType(.strikethrough), identifier: .strikethrough),
-            FormatBarItem(image: Gridicon.iconOfType(.quote), identifier: .blockquote),
-            FormatBarItem(image: Gridicon.iconOfType(.listUnordered), identifier: .unorderedlist),
-            FormatBarItem(image: Gridicon.iconOfType(.listOrdered), identifier: .orderedlist),
-            FormatBarItem(image: Gridicon.iconOfType(.link), identifier: .link),
-            FormatBarItem(image: Gridicon.iconOfType(.minusSmall), identifier: .horizontalruler)
+            makeToolbarButton(identifier: .media),
+            makeToolbarButton(identifier: .header),
+            makeToolbarButton(identifier: .bold),
+            makeToolbarButton(identifier: .italic),
+            makeToolbarButton(identifier: .underline),
+            makeToolbarButton(identifier: .strikethrough),
+            makeToolbarButton(identifier: .blockquote),
+            makeToolbarButton(identifier: .unorderedlist),
+            makeToolbarButton(identifier: .orderedlist),
+            makeToolbarButton(identifier: .link),
+            makeToolbarButton(identifier: .horizontalruler),
+            makeToolbarButton(identifier: .more)
         ]
 
         let fixedItems = [
-            FormatBarItem(image: Gridicon.iconOfType(.code), identifier: .sourcecode)
+            makeToolbarButton(identifier: .sourcecode)
         ]
 
         let toolbar = Aztec.FormatBar()
@@ -1350,6 +1485,8 @@ fileprivate extension AztecPostViewController {
             return
         }
 
+        WPAppAnalytics.track(.editorDiscardedChanges, withProperties:[WPAppAnalyticsKeyEditorSource: analyticsEditorSourceValue], with: post)
+
         post = originalPost
         post.deleteRevision()
 
@@ -1369,6 +1506,8 @@ fileprivate extension AztecPostViewController {
 
     func dismissOrPopView(didSave: Bool) {
         stopEditing()
+
+        WPAppAnalytics.track(.editorClosed, withProperties:[WPAppAnalyticsKeyEditorSource: analyticsEditorSourceValue], with: post)
 
         if let onClose = onClose {
             onClose(didSave)
@@ -1447,9 +1586,9 @@ private extension AztecPostViewController {
 extension AztecPostViewController: MediaProgressCoordinatorDelegate {
 
     func configureMediaAppearance() {
-        TextAttachment.appearance.progressBackgroundColor = Colors.mediaProgressBarBackground
-        TextAttachment.appearance.progressColor = Colors.mediaProgressBarTrack
-        TextAttachment.appearance.overlayColor = Colors.mediaProgressOverlay
+        MediaAttachment.appearance.progressBackgroundColor = Colors.mediaProgressBarBackground
+        MediaAttachment.appearance.progressColor = Colors.mediaProgressBarTrack
+        MediaAttachment.appearance.overlayColor = Colors.mediaProgressOverlay
     }
 
     func mediaProgressCoordinator(_ mediaProgressCoordinator: MediaProgressCoordinator, progressDidChange progress: Float) {
@@ -1493,6 +1632,13 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
                 }
                 return
             }
+
+            if media.mediaType == .image {
+                WPAppAnalytics.track(.editorAddedPhotoViaLocalLibrary, withProperties: WPAppAnalytics.properties(for: media), with: strongSelf.post.blog)
+            } else if media.mediaType == .video {
+                WPAppAnalytics.track(.editorAddedVideoViaLocalLibrary, withProperties: WPAppAnalytics.properties(for: media), with: strongSelf.post.blog)
+            }
+
             strongSelf.upload(media: media, mediaID: attachment.identifier)
         })
     }
@@ -1506,17 +1652,22 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
             self.mediaProgressCoordinator.finishOneItem()
         } else {
             var tempMediaURL = URL(string:"placeholder://")!
-            if let mediaLocalPath = media.absoluteLocalURL,
-                let localURL = URL(string: mediaLocalPath) {
-                tempMediaURL = localURL
+            if let absoluteURL = media.absoluteLocalURL {
+                tempMediaURL = absoluteURL
             }
             let attachment = self.richTextView.insertImage(sourceURL:tempMediaURL, atPosition: self.richTextView.selectedRange.location, placeHolderImage: Assets.defaultMissingImage)
+
+            if media.mediaType == .image {
+                WPAppAnalytics.track(.editorAddedPhotoViaWPMediaLibrary, withProperties: WPAppAnalytics.properties(for: media), with: post)
+            } else if media.mediaType == .video {
+                WPAppAnalytics.track(.editorAddedVideoViaWPMediaLibrary, withProperties: WPAppAnalytics.properties(for: media), with: post)
+            }
 
             upload(media: media, mediaID: attachment.identifier)
         }
     }
 
-    fileprivate func saveToMedia(attachment: TextAttachment) {
+    fileprivate func saveToMedia(attachment: MediaAttachment) {
         guard let image = attachment.image else {
             return
         }
@@ -1524,7 +1675,9 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
         let mediaService = MediaService(managedObjectContext:ContextManager.sharedInstance().mainContext)
         mediaService.createMedia(with: image, withMediaID:"CopyPasteImage" , forPost: post.objectID, thumbnailCallback: { (thumbnailURL) in
             DispatchQueue.main.async {
-                self.richTextView.update(attachment: attachment, alignment: attachment.alignment, size: attachment.size, url: thumbnailURL)
+                if let imageAttachment = attachment as? ImageAttachment {
+                    self.richTextView.update(attachment: imageAttachment, alignment: imageAttachment.alignment, size: imageAttachment.size, url: thumbnailURL)
+                }
             }
         }, completion: { [weak self](media, error) in
             guard let strongSelf = self else {
@@ -1536,6 +1689,13 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
                 }
                 return
             }
+
+            if media.mediaType == .image {
+                WPAppAnalytics.track(.editorAddedPhotoViaLocalLibrary, withProperties: WPAppAnalytics.properties(for: media), with: strongSelf.post.blog)
+            } else if media.mediaType == .video {
+                WPAppAnalytics.track(.editorAddedVideoViaLocalLibrary, withProperties: WPAppAnalytics.properties(for: media), with: strongSelf.post.blog)
+            }
+
             strongSelf.upload(media: media, mediaID: attachment.identifier)
         })
     }
@@ -1551,12 +1711,17 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
                 return
             }
             DispatchQueue.main.async {
-                strongSelf.richTextView.update(attachment: attachment, alignment: attachment.alignment, size: attachment.size, url: remoteURL)
+                if let imageAttachment = attachment as? ImageAttachment {
+                    strongSelf.richTextView.update(attachment: imageAttachment, alignment: imageAttachment.alignment, size: imageAttachment.size, url: remoteURL)
+                }
             }
             }, failure: { [weak self](error) in
                 guard let strongSelf = self else {
                     return
                 }
+
+                WPAppAnalytics.track(.editorUploadMediaFailed, withProperties: [WPAppAnalyticsKeyEditorSource: strongSelf.analyticsEditorSourceValue], with: strongSelf.post.blog)
+
                 DispatchQueue.main.async {
                     strongSelf.handleError(error as NSError, onAttachment: attachment)
                 }
@@ -1566,7 +1731,7 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
         }
     }
 
-    private func handleError(_ error: NSError?, onAttachment attachment: Aztec.TextAttachment) {
+    private func handleError(_ error: NSError?, onAttachment attachment: Aztec.MediaAttachment) {
         let message = NSLocalizedString("Failed to insert media.\n Please tap for options.", comment: "Error message to show to use when media insertion on a post fails")
 
         if let error = error {
@@ -1591,7 +1756,7 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
     }
 
     // TODO: Extract these strings into structs like other items
-    fileprivate func displayActions(forAttachment attachment: TextAttachment, position: CGPoint) {
+    fileprivate func displayActions(forAttachment attachment: MediaAttachment, position: CGPoint) {
         let mediaID = attachment.identifier
         let title: String = NSLocalizedString("Media Options", comment: "Title for action sheet with media options.")
         var message: String?
@@ -1605,12 +1770,13 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
                                                 self.richTextView.refreshLayoutFor(attachment: attachment)
                                             }
         })
-
-        alertController.preferredAction = alertController.addActionWithTitle(NSLocalizedString("Details", comment: "User action to edit media details."),
-                                           style: .default,
-                                           handler: { (action) in
-                                            self.displayDetails(forAttachment: attachment)
-        })
+        if let imageAttachment = attachment as? ImageAttachment {
+            alertController.preferredAction = alertController.addActionWithTitle(NSLocalizedString("Details", comment: "User action to edit media details."),
+                                               style: .default,
+                                               handler: { (action) in
+                                                self.displayDetails(forAttachment: imageAttachment)
+            })
+        }
         // Is upload still going?
         if let mediaProgress = mediaProgressCoordinator.mediaUploading[mediaID],
             mediaProgress.completedUnitCount < mediaProgress.totalUnitCount {
@@ -1633,6 +1799,9 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
                                                         attachment.progress = 0
                                                         self.richTextView.refreshLayoutFor(attachment: attachment)
                                                         self.mediaProgressCoordinator.track(numberOfItems: 1)
+
+                                                        WPAppAnalytics.track(.editorUploadMediaRetried, withProperties: [WPAppAnalyticsKeyEditorSource: self.analyticsEditorSourceValue], with: self.post.blog)
+
                                                         self.upload(media: media, mediaID: mediaID)
                                                     }
                 })
@@ -1654,14 +1823,15 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
         })
     }
 
-    func displayDetails(forAttachment attachment: TextAttachment) {
-
+    func displayDetails(forAttachment attachment: ImageAttachment) {
         let controller = AztecAttachmentViewController()
         controller.delegate = self
         controller.attachment = attachment
         let navController = UINavigationController(rootViewController: controller)
         navController.modalPresentationStyle = .formSheet
         present(navController, animated: true, completion: nil)
+
+        WPAppAnalytics.track(.editorEditedImage, withProperties: [WPAppAnalyticsKeyEditorSource: analyticsEditorSourceValue], with: post)
     }
 
     var mediaMessageAttributes: [String: Any] {
@@ -1683,7 +1853,7 @@ extension AztecPostViewController: MediaProgressCoordinatorDelegate {
 //
 extension AztecPostViewController: AztecAttachmentViewControllerDelegate {
 
-    func aztecAttachmentViewController(_ viewController: AztecAttachmentViewController, changedAttachment: TextAttachment) {
+    func aztecAttachmentViewController(_ viewController: AztecAttachmentViewController, changedAttachment: ImageAttachment) {
         richTextView.update(attachment: changedAttachment, alignment: changedAttachment.alignment, size: changedAttachment.size, url: changedAttachment.url!)
     }
 }
@@ -1693,10 +1863,24 @@ extension AztecPostViewController: AztecAttachmentViewControllerDelegate {
 //
 extension AztecPostViewController: TextViewMediaDelegate {
 
-    public func textView(_ textView: TextView, selectedAttachment attachment: TextAttachment, atPosition position: CGPoint) {
+    public func textView(_ textView: TextView, selectedAttachment attachment: NSTextAttachment, atPosition position: CGPoint) {
         if  !richTextView.isFirstResponder {
             richTextView.becomeFirstResponder()
         }
+
+        if let imgAttachment = attachment as? ImageAttachment {
+            selected(textAttachment: imgAttachment, atPosition: position)
+        }
+
+        if let videoAttachment = attachment as? VideoAttachment {
+            if let imageAttachment = currentSelectedAttachment {
+                deselected(textAttachment: imageAttachment, atPosition: position)
+            }
+            selected(videoAttachment: videoAttachment, atPosition: position)
+        }
+    }
+
+    func selected(textAttachment attachment: ImageAttachment, atPosition position: CGPoint) {
         //check if it's the current selected attachment or an failed upload
         if attachment == currentSelectedAttachment || mediaProgressCoordinator.error(forMediaID: attachment.identifier) != nil {
             //if it's the same attachment has before let's display the options
@@ -1716,10 +1900,35 @@ extension AztecPostViewController: TextViewMediaDelegate {
         }
     }
 
-    public func textView(_ textView: TextView, deselectedAttachment attachment: TextAttachment, atPosition position: CGPoint) {
-        attachment.clearAllOverlays()
-        richTextView.refreshLayoutFor(attachment: attachment)
+    func selected(videoAttachment attachment: VideoAttachment, atPosition position: CGPoint) {
+        guard let videoURL = attachment.srcURL else {
+            return
+        }
+        displayVideoPlayer(for: videoURL)
+    }
+
+    func displayVideoPlayer(for videoURL: URL) {
+        let asset = AVURLAsset(url: videoURL)
+        let controller = AVPlayerViewController()
+        let playerItem = AVPlayerItem(asset: asset)
+        let player = AVPlayer(playerItem: playerItem)
+        controller.showsPlaybackControls = true
+        controller.player = player
+        player.play()
+        present(controller, animated:true, completion: nil)
+    }
+
+
+    public func textView(_ textView: TextView, deselectedAttachment attachment: NSTextAttachment, atPosition position: CGPoint) {
+        deselected(textAttachment: attachment, atPosition: position)
+    }
+
+    func deselected(textAttachment attachment: NSTextAttachment, atPosition position: CGPoint) {
         currentSelectedAttachment = nil
+        if let mediaAttachment = attachment as? MediaAttachment {
+            mediaAttachment.clearAllOverlays()
+            richTextView.refreshLayoutFor(attachment: mediaAttachment)
+        }
     }
 
     func textView(_ textView: TextView, imageAtUrl url: URL, onSuccess success: @escaping (UIImage) -> Void, onFailure failure: @escaping (Void) -> Void) -> UIImage {
@@ -1760,8 +1969,10 @@ extension AztecPostViewController: TextViewMediaDelegate {
         return Gridicon.iconOfType(.image)
     }
 
-    func textView(_ textView: TextView, urlForAttachment attachment: TextAttachment) -> URL {
-        saveToMedia(attachment: attachment)
+    func textView(_ textView: TextView, urlForAttachment attachment: NSTextAttachment) -> URL {
+        if let mediaAttachment = attachment as? MediaAttachment {
+            saveToMedia(attachment: mediaAttachment)
+        }
         return URL(string:"placeholder://")!
     }
 
@@ -1875,6 +2086,7 @@ extension AztecPostViewController {
         static let cancelButtonPadding      = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 5)
         static let blogPickerCompactSize    = CGSize(width: 125, height: 30)
         static let blogPickerRegularSize    = CGSize(width: 300, height: 30)
+        static let moreAttachmentText       = "more"
         static let placeholderPadding       = UIEdgeInsets(top: 8, left: 5, bottom: 0, right: 0)
     }
 
@@ -1933,6 +2145,146 @@ extension AztecPostViewController {
         static let acceptTitle  = NSLocalizedString("Yes", comment: "Accept Action")
         static let cancelTitle  = NSLocalizedString("Not Now", comment: "Nicer dialog answer for \"No\".")
     }
+}
+
+extension FormattingIdentifier {
+
+    var iconImage: UIImage {
+
+        switch(self) {
+        case .media:
+            return Gridicon.iconOfType(.addImage)
+        case .header:
+            return Gridicon.iconOfType(.heading)
+        case .bold:
+            return Gridicon.iconOfType(.bold)
+        case .italic:
+            return Gridicon.iconOfType(.italic)
+        case .underline:
+            return Gridicon.iconOfType(.underline)
+        case .strikethrough:
+            return Gridicon.iconOfType(.strikethrough)
+        case .blockquote:
+            return Gridicon.iconOfType(.quote)
+        case .orderedlist:
+            return Gridicon.iconOfType(.listOrdered)
+        case .unorderedlist:
+            return Gridicon.iconOfType(.listUnordered)
+        case .link:
+            return Gridicon.iconOfType(.link)
+        case .horizontalruler:
+            return Gridicon.iconOfType(.minusSmall)
+        case .sourcecode:
+            return Gridicon.iconOfType(.code)
+        case .more:
+            return Gridicon.iconOfType(.readMore)
+        case .header1:
+            return Gridicon.iconOfType(.heading)
+        case .header2:
+            return Gridicon.iconOfType(.heading)
+        case .header3:
+            return Gridicon.iconOfType(.heading)
+        case .header4:
+            return Gridicon.iconOfType(.heading)
+        case .header5:
+            return Gridicon.iconOfType(.heading)
+        case .header6:
+            return Gridicon.iconOfType(.heading)
+        case .p:
+            return Gridicon.iconOfType(.heading)
+        }
+    }
+
+    var accessibilityIdentifier: String {
+        switch(self) {
+        case .media:
+            return "format_toolbar_insert_media"
+        case .header:
+            return "format_toolbar_select_paragraph_style"
+        case .bold:
+            return "format_toolbar_toggle_bold"
+        case .italic:
+            return "format_toolbar_toggle_italic"
+        case .underline:
+            return "format_toolbar_toggle_underline"
+        case .strikethrough:
+            return "format_toolbar_toggle_strikethrough"
+        case .blockquote:
+            return "format_toolbar_toggle_blockquote"
+        case .orderedlist:
+            return "format_toolbar_toggle_list_ordered"
+        case .unorderedlist:
+            return "format_toolbar_toggle_list_unordered"
+        case .link:
+            return "format_toolbar_insert_link"
+        case .horizontalruler:
+            return "format_toolbar_insert_horizontal_ruler"
+        case .sourcecode:
+            return "format_toolbar_toggle_html_view"
+        case .more:
+            return "format_toolbar_insert_more"
+        case .header1:
+            return "format_toolbar_toggle_h1"
+        case .header2:
+            return "format_toolbar_toggle_h2"
+        case .header3:
+            return "format_toolbar_toggle_h3"
+        case .header4:
+            return "format_toolbar_toggle_h4"
+        case .header5:
+            return "format_toolbar_toggle_h5"
+        case .header6:
+            return "format_toolbar_toggle_h6"
+        case .p:
+            return "none"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch(self) {
+        case .media:
+            return NSLocalizedString("Insert media", comment: "Accessibility label for insert media button on formatting toolbar.")
+        case .header:
+            return NSLocalizedString("Select paragraph style", comment: "Accessibility label for selecting paragraph style button on formatting toolbar.")
+        case .bold:
+            return NSLocalizedString("Bold", comment: "Accessibility label for bold button on formatting toolbar.")
+        case .italic:
+            return NSLocalizedString("Italic", comment: "Accessibility label for italic button on formatting toolbar.")
+        case .underline:
+            return NSLocalizedString("Underline", comment: "Accessibility label for underline button on formatting toolbar.")
+        case .strikethrough:
+            return NSLocalizedString("Strike Through", comment: "Accessibility label for strikethrough button on formatting toolbar.")
+        case .blockquote:
+            return NSLocalizedString("Block Quote", comment: "Accessibility label for block quote button on formatting toolbar.")
+        case .orderedlist:
+            return NSLocalizedString("Ordered List", comment: "Accessibility label for Ordered list button on formatting toolbar.")
+        case .unorderedlist:
+            return NSLocalizedString("Unordered List", comment: "Accessibility label for unordered list button on formatting toolbar.")
+        case .link:
+            return NSLocalizedString("Insert Link", comment: "Accessibility label for insert link button on formatting toolbar.")
+        case .horizontalruler:
+            return NSLocalizedString("Insert Horizontal Ruler", comment: "Accessibility label for insert horizontal ruler button on formatting toolbar.")
+        case .sourcecode:
+            return NSLocalizedString("HTML", comment:"Accessibility label for HTML button on formatting toolbar.")
+        case .more:
+            return NSLocalizedString("More", comment:"Accessibility label for the More button on formatting toolbar.")
+        case .header1:
+            return NSLocalizedString("Header 1", comment: "Accessibility label for selecting h1 paragraph style button on the formatting toolbar.")
+        case .header2:
+            return NSLocalizedString("Header 2", comment: "Accessibility label for selecting h2 paragraph style button on the formatting toolbar.")
+        case .header3:
+            return NSLocalizedString("Header 3", comment: "Accessibility label for selecting h3 paragraph style button on the formatting toolbar.")
+        case .header4:
+            return NSLocalizedString("Header 4", comment: "Accessibility label for selecting h4 paragraph style button on the formatting toolbar.")
+        case .header5:
+            return NSLocalizedString("Header 5", comment: "Accessibility label for selecting h5 paragraph style button on the formatting toolbar.")
+        case .header6:
+            return NSLocalizedString("Header 6", comment: "Accessibility label for selecting h6 paragraph style button on the formatting toolbar.")
+        case .p:
+            return NSLocalizedString("Paragraph", comment: "Accessibility label for selecting the default paragraph style button on the formatting toolbar.")
+        }
+    }
+
 }
 
 

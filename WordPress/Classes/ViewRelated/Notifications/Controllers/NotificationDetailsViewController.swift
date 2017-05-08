@@ -62,7 +62,7 @@ class NotificationDetailsViewController: UIViewController {
 
     /// Keyboard Manager: Aids in the Interactive Dismiss Gesture
     ///
-    fileprivate var keyboardManager: KeyboardDismissHelper!
+    fileprivate var keyboardManager: KeyboardDismissHelper?
 
     /// Cached values used for returning the estimated row heights of autosizing cells.
     ///
@@ -88,7 +88,6 @@ class NotificationDetailsViewController: UIViewController {
                 return
             }
 
-            markReadIfNeeded()
             refreshInterface()
         }
     }
@@ -105,7 +104,6 @@ class NotificationDetailsViewController: UIViewController {
     ///
     var onSelectedNoteChange: ((Notification) -> Void)?
 
-    private var isViewVisible = false
 
     deinit {
         NotificationCenter.default.removeObserver(self)
@@ -143,21 +141,14 @@ class NotificationDetailsViewController: UIViewController {
         super.viewWillAppear(animated)
 
         tableView.deselectSelectedRowWithAnimation(true)
-        keyboardManager.startListeningToKeyboardNotifications()
+        keyboardManager?.startListeningToKeyboardNotifications()
 
         refreshInterface()
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        isViewVisible = true
-        markReadIfNeeded()
-    }
-
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        isViewVisible = false
-        keyboardManager.stopListeningToKeyboardNotifications()
+        keyboardManager?.stopListeningToKeyboardNotifications()
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -171,6 +162,14 @@ class NotificationDetailsViewController: UIViewController {
         super.viewDidLayoutSubviews()
 
         refreshNavigationBar()
+    }
+
+    fileprivate func markAsReadIfNeeded() {
+        guard !note.read else {
+            return
+        }
+
+        NotificationSyncMediator()?.markAsRead(note)
     }
 
     fileprivate func refreshInterfaceIfNeeded() {
@@ -187,14 +186,6 @@ class NotificationDetailsViewController: UIViewController {
         attachSuggestionsViewIfNeeded()
         adjustLayoutConstraintsIfNeeded()
         refreshNavigationBar()
-    }
-
-    fileprivate func markReadIfNeeded() {
-        guard isViewVisible, !note.read else {
-            return
-        }
-        let mediator = NotificationSyncMediator()
-        mediator?.markAsRead(note)
     }
 
     fileprivate func refreshNavigationBar() {
@@ -220,7 +211,9 @@ class NotificationDetailsViewController: UIViewController {
         buttons.spacing = buttonSpacing
         buttons.frame = CGRect(x: 0, y: 0, width: width, height: height)
 
-        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: buttons)
+        UIView.performWithoutAnimation {
+            navigationItem.rightBarButtonItem = UIBarButtonItem(customView: buttons)
+        }
 
         previousNavigationButton.isEnabled = shouldEnablePreviousButton
         nextNavigationButton.isEnabled = shouldEnableNextButton
@@ -421,7 +414,7 @@ extension NotificationDetailsViewController {
         let nc = NotificationCenter.default
         nc.addObserver(self,
                        selector: #selector(notificationWasUpdated),
-                       name: NSNotification.Name.NSManagedObjectContextObjectsDidChange,
+                       name: .NSManagedObjectContextObjectsDidChange,
                        object: note.managedObjectContext)
     }
 }
@@ -447,7 +440,7 @@ extension NotificationDetailsViewController {
             return false
         }
 
-        return block.isActionOn(.Reply) && hasHorizontallyCompactView()
+        return block.isActionOn(.Reply)
     }
 }
 
@@ -679,7 +672,7 @@ private extension NotificationDetailsViewController {
         // Setup: Properties
         // Note: Approve Action is actually a synonym for 'Edit' (Based on Calypso's basecode)
         //
-        cell.isReplyEnabled     = !shouldAttachReplyView && commentBlock.isActionOn(.Reply)
+        cell.isReplyEnabled     = UIDevice.isPad() && commentBlock.isActionOn(.Reply)
         cell.isLikeEnabled      = commentBlock.isActionEnabled(.Like)
         cell.isApproveEnabled   = commentBlock.isActionEnabled(.Approve)
         cell.isTrashEnabled     = commentBlock.isActionEnabled(.Trash)
@@ -690,7 +683,7 @@ private extension NotificationDetailsViewController {
 
         // Setup: Callbacks
         cell.onReplyClick = { [weak self] _ in
-            self?.displayReplyEditorWithBlock(commentBlock)
+            self?.focusOnReplyTextViewWithBlock(commentBlock)
         }
 
         cell.onLikeClick = { [weak self] _ in
@@ -770,9 +763,10 @@ extension NotificationDetailsViewController {
         let refreshed = notification.userInfo?[NSRefreshedObjectsKey] as? Set<NSManagedObject> ?? Set()
         let deleted   = notification.userInfo?[NSDeletedObjectsKey]   as? Set<NSManagedObject> ?? Set()
 
-        // Reload the table, if *our* notification got updated
+        // Reload the table, if *our* notification got updated + Mark as Read since it's already onscreen!
         if updated.contains(note) || refreshed.contains(note) {
             refreshInterface()
+            markAsReadIfNeeded()
         } else {
             // Otherwise, refresh the navigation bar as the notes list might have changed
             refreshNavigationBar()
@@ -1095,7 +1089,7 @@ private extension NotificationDetailsViewController {
             }
 
             let message = NSLocalizedString("Reply Sent!", comment: "The app successfully sent a comment")
-            SVProgressHUD.showSuccess(withStatus: message)
+            SVProgressHUD.showDismissibleSuccess(withStatus: message)
         })
     }
 
@@ -1120,27 +1114,8 @@ private extension NotificationDetailsViewController {
 // MARK: - Replying Comments
 //
 private extension NotificationDetailsViewController {
-    func displayReplyEditorWithBlock(_ block: NotificationBlock) {
-        guard let siteID = note.metaSiteID else {
-            return
-        }
-
-        let editViewController = EditReplyViewController.newReplyViewController(forSiteID: siteID)
-        editViewController?.onCompletion = { (hasNewContent, newContent) in
-            self.dismiss(animated: true, completion: {
-                guard hasNewContent else {
-                    return
-                }
-
-                self.replyCommentWithBlock(block, content: newContent!)
-            })
-        }
-
-        let navController = UINavigationController(rootViewController: editViewController!)
-        navController.modalPresentationStyle = .formSheet
-        navController.modalTransitionStyle = .coverVertical
-        navController.navigationBar.isTranslucent = false
-        present(navController, animated: true, completion: nil)
+    func focusOnReplyTextViewWithBlock(_ block: NotificationBlock) {
+        let _ = replyTextView.becomeFirstResponder()
     }
 
     func displayReplyErrorWithBlock(_ block: NotificationBlock, content: String) {
@@ -1222,15 +1197,15 @@ extension NotificationDetailsViewController: ReplyTextViewDelegate {
 //
 extension NotificationDetailsViewController: UIScrollViewDelegate {
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-        keyboardManager.scrollViewWillBeginDragging(scrollView)
+        keyboardManager?.scrollViewWillBeginDragging(scrollView)
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        keyboardManager.scrollViewDidScroll(scrollView)
+        keyboardManager?.scrollViewDidScroll(scrollView)
     }
 
     func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
-        keyboardManager.scrollViewWillEndDragging(scrollView, withVelocity: velocity)
+        keyboardManager?.scrollViewWillEndDragging(scrollView, withVelocity: velocity)
     }
 }
 

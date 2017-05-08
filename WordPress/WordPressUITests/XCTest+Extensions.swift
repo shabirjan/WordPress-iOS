@@ -29,12 +29,10 @@ public struct elementStringIDs {
 
     // My Sites page
     static var settingsButton = "BlogDetailsSettingsCell"
-
-    // Site Settings page
-    static var removeSiteButton = "removeSiteButton"
+    static var removeSiteButton = "BlogDetailsRemoveSiteCell"
 
     // Me tab
-    static var disconnectFromWPcomButton = "disconnectFromWPcomButton"
+    static var logOutFromWPcomButton = "logOutFromWPcomButton"
 }
 
 extension XCUIElement {
@@ -86,7 +84,7 @@ extension XCTestCase {
         if !app.textFields[ elementStringIDs.loginUsernameField ].exists && !app.textFields[ elementStringIDs.nuxUsernameField ].exists {
             app.tabBars[ elementStringIDs.mainNavigationBar ].buttons[ elementStringIDs.mainNavigationMeButton ].tap()
             app.tables.element(boundBy: 0).swipeUp()
-            app.tables.cells[ elementStringIDs.disconnectFromWPcomButton ].tap()
+            app.tables.cells[ elementStringIDs.logOutFromWPcomButton ].tap()
             app.alerts.buttons.element(boundBy: 1).tap()
             //Give some time to everything get proper saved.
             sleep(2)
@@ -146,14 +144,13 @@ extension XCTestCase {
         let removeButton = app.tables.cells[ elementStringIDs.removeSiteButton ]
         let mySitesTabButton = app.tabBars[ elementStringIDs.mainNavigationBar ].buttons[ elementStringIDs.mainNavigationMySitesButton ]
         let siteNameField = app.tables.staticTexts[ WordPressTestCredentials.selfHostedSiteName ]
-        let settingsButton = app.tables.cells[ elementStringIDs.settingsButton ]
 
         // Tap the My Sites button twice to be sure that we're on the All Sites list
         mySitesTabButton.tap()
         mySitesTabButton.tap()
 
         siteNameField.tap()
-        settingsButton.tap()
+        app.tables.element(boundBy: 0).swipeUp()
 
         waitForElementToAppear(element: removeButton)
         removeButton.tap()

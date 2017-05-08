@@ -109,14 +109,13 @@
             success:(void (^)(RemoteMedia *remoteMedia))success
             failure:(void (^)(NSError *error))failure
 {
-    NSString *path = media.localURL;
     NSString *type = media.mimeType;
     NSString *filename = media.file;
     
     NSMutableDictionary *data = [NSMutableDictionary dictionaryWithDictionary:@{
                            @"name": filename,
                            @"type": type,
-                           @"bits": [NSInputStream inputStreamWithFileAtPath:path],
+                           @"bits": [NSInputStream inputStreamWithFileAtPath:media.localURL.path],
                            }];
     if ([media.postID compare:@(0)] == NSOrderedDescending) {
         data[@"post_id"] = media.postID;
@@ -192,6 +191,19 @@
                          failure(error);
                      }
                  }];
+}
+
+-(void)getVideoURLFromVideoPressID:(NSString *)videoPressID
+                           success:(void (^)(NSURL *videoURL, NSURL *posterURL))success
+                           failure:(void (^)(NSError *))failure
+{
+    //Sergio Estevao: 2017-04-12 this option doens't exist on XML-RPC so we will always fail the request
+    if (failure) {
+        NSError *error = [NSError errorWithDomain:NSURLErrorDomain
+                                             code:NSURLErrorUnsupportedURL
+                                         userInfo:nil];
+        failure(error);
+    }
 }
 
 #pragma mark - Private methods

@@ -27,16 +27,16 @@ static NSInteger HideSearchMinSites = 3;
 @interface BlogListViewController () <UIViewControllerRestoration,
                                         UIDataSourceModelAssociation,
                                         UITableViewDelegate,
-                                        UISearchResultsUpdating,
-                                        UISearchControllerDelegate,
+                                        UISearchBarDelegate,
                                         WPNoResultsViewDelegate,
                                         WPSplitViewControllerDetailProvider>
 
+@property (nonatomic, strong) UIStackView *stackView;
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UIView *headerView;
 @property (nonatomic, strong) UILabel *headerLabel;
 @property (nonatomic, strong) WPNoResultsView *noResultsView;
-@property (nonatomic, strong) UISearchController *searchController;
+@property (nonatomic, strong) UISearchBar *searchBar;
 @property (nonatomic,   weak) UIAlertController *addSiteAlertController;
 @property (nonatomic, strong) UIBarButtonItem *addSiteButton;
 
@@ -145,16 +145,16 @@ static NSInteger HideSearchMinSites = 3;
 {
     [super viewDidLoad];
 
-    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
-    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:self.tableView];
-    [self.view pinSubviewToAllEdges:self.tableView];
+    [self configureStackView];
 
-    [WPStyleGuide configureColorsForView:self.view andTableView:self.tableView];
-    self.editButtonItem.accessibilityIdentifier = NSLocalizedString(@"Edit", @"");
+    [self configureSearchBar];
+    [self.stackView addArrangedSubview:self.searchBar];
 
     [self configureTableView];
-    [self configureSearchController];
+    [self.stackView addArrangedSubview:self.tableView];
+
+    self.editButtonItem.accessibilityIdentifier = NSLocalizedString(@"Edit", @"");
+
     [self configureNoResultsView];
 
     [self registerForAccountChangeNotification];
@@ -180,9 +180,11 @@ static NSInteger HideSearchMinSites = 3;
 
 - (void)viewWillDisappear:(BOOL)animated
 {
-    self.searchController.active = NO;
     [super viewWillDisappear:animated];
     [self unregisterForKeyboardNotifications];
+    if (self.searchBar.isFirstResponder) {
+        [self.searchBar resignFirstResponder];
+    }
     self.visible = NO;
 }
 
@@ -219,9 +221,9 @@ static NSInteger HideSearchMinSites = 3;
     BlogService *blogService = [[BlogService alloc] initWithManagedObjectContext:context];
     if ([blogService blogCountForAllAccounts] <= HideSearchMinSites) {
         // Hide the search bar if there's only a few blogs
-        self.tableView.tableHeaderView = nil;
-    } else {
-        [self addSearchBarTableHeaderView];
+        [self.searchBar removeFromSuperview];
+    } else if (self.searchBar.superview != self.stackView) {
+        [self.stackView insertArrangedSubview:self.searchBar atIndex:0];
     }
 }
 
@@ -400,49 +402,37 @@ static NSInteger HideSearchMinSites = 3;
     return UIStatusBarStyleLightContent;
 }
 
+- (void)configureStackView
+{
+    UIStackView *stackView = [[UIStackView alloc] init];
+    stackView.translatesAutoresizingMaskIntoConstraints = NO;
+    stackView.axis = UILayoutConstraintAxisVertical;
+    stackView.spacing = 0;
+    [self.view addSubview:stackView];
+    [self.view pinSubviewToAllEdges:stackView];
+    _stackView = stackView;
+}
+
 - (void)configureTableView
 {
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.delegate = self;
     self.tableView.dataSource = self.dataSource;
     [self.tableView registerClass:[WPBlogTableViewCell class] forCellReuseIdentifier:[WPBlogTableViewCell reuseIdentifier]];
     self.tableView.allowsSelectionDuringEditing = YES;
     self.tableView.accessibilityIdentifier = NSLocalizedString(@"Blogs", @"");
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
 
     self.tableView.tableFooterView = [UIView new];
+    [WPStyleGuide configureColorsForView:self.view andTableView:self.tableView];
 }
 
-- (void)configureSearchController
+- (void)configureSearchBar
 {
-    // Required for insets to work out correctly when the search bar becomes active
-    self.extendedLayoutIncludesOpaqueBars = YES;
-    self.definesPresentationContext = YES;
+    self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectZero];
+    self.searchBar.delegate = self;
 
-    self.searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
-    self.searchController.dimsBackgroundDuringPresentation = NO;
-
-    [self addSearchBarTableHeaderView];
-
-    self.searchController.delegate = self;
-    self.searchController.searchResultsUpdater = self;
-
-    [WPStyleGuide configureSearchBar:self.searchController.searchBar];
-}
-
-- (void)addSearchBarTableHeaderView
-{
-    if (!self.tableView.tableHeaderView) {
-        // Required to work around a bug where the search bar was extending a
-        // grey background above the top of the tableview, which was visible when
-        // pulling down further than offset zero
-        SearchWrapperView *wrapperView = [SearchWrapperView new];
-        [wrapperView addSubview:self.searchController.searchBar];
-        wrapperView.frame = CGRectMake(0, 0, self.view.bounds.size.width, self.searchController.searchBar.bounds.size.height);
-        self.tableView.tableHeaderView = wrapperView;
-    }
-}
-
-- (CGFloat)searchBarHeight {
-    return CGRectGetHeight(self.searchController.searchBar.bounds) + self.topLayoutGuide.length;
+    [WPStyleGuide configureSearchBar:self.searchBar];
 }
 
 - (void)configureNoResultsView
@@ -506,25 +496,14 @@ static NSInteger HideSearchMinSites = 3;
 
     UIEdgeInsets insets = self.tableView.contentInset;
 
-    self.tableView.scrollIndicatorInsets = UIEdgeInsetsMake([self searchBarHeight], insets.left, keyboardHeight, insets.right);
+    self.tableView.scrollIndicatorInsets = UIEdgeInsetsMake(0, insets.left, keyboardHeight, insets.right);
     self.tableView.contentInset = UIEdgeInsetsMake(self.topLayoutGuide.length, insets.left, keyboardHeight, insets.right);
 }
 
 - (void)keyboardWillHide:(NSNotification*)notification
 {
-    CGFloat tabBarHeight = self.tabBarController.tabBar.bounds.size.height;
-
-    UIEdgeInsets insets = self.tableView.contentInset;
-    insets.top = self.topLayoutGuide.length;
-    insets.bottom = tabBarHeight;
-
-    self.tableView.contentInset = insets;
-
-    if (self.searchController.active) {
-        insets.top = [self searchBarHeight];
-    }
-
-    self.tableView.scrollIndicatorInsets = insets;
+    self.tableView.scrollIndicatorInsets = UIEdgeInsetsZero;
+    self.tableView.contentInset = UIEdgeInsetsZero;
 }
 
 -(CGRect)localKeyboardFrameFromNotification:(NSNotification *)notification
@@ -588,7 +567,99 @@ static NSInteger HideSearchMinSites = 3;
 
 - (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    return UITableViewCellEditingStyleNone;
+    if (self.tableView.isEditing) {
+        return UITableViewCellEditingStyleNone;
+    } else {
+        return UITableViewCellEditingStyleDelete;
+    }
+}
+
+- (NSArray *)tableView:(UITableView *)tableView editActionsForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    Blog *blog = [self.dataSource blogAtIndexPath:indexPath];
+    NSMutableArray *actions = [NSMutableArray array];
+    __typeof(self) __weak weakSelf = self;
+
+    if ([blog supports:BlogFeatureRemovable]) {
+        UITableViewRowAction *removeAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal
+                                                                                title:NSLocalizedString(@"Remove", @"Removes a self hosted site from the app")
+                                                                              handler:^(UITableViewRowAction * _Nonnull action, NSIndexPath * _Nonnull indexPath) {
+                                                                                  [ReachabilityUtils onAvailableInternetConnectionDo:^{
+                                                                                      [weakSelf showRemoveSiteAlertForIndexPath:indexPath];
+                                                                                  }];
+                                                                              }];
+        removeAction.backgroundColor = [WPStyleGuide errorRed];
+        [actions addObject:removeAction];
+    } else {
+        if (blog.visible) {
+            UITableViewRowAction *hideAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal
+                                                                                  title:NSLocalizedString(@"Hide", @"Hides a site from the site picker list")
+                                                                                handler:^(UITableViewRowAction * _Nonnull action, NSIndexPath * _Nonnull indexPath) {
+                                                                                    [ReachabilityUtils onAvailableInternetConnectionDo:^{
+                                                                                        [weakSelf hideBlogAtIndexPath:indexPath];
+                                                                                    }];
+                                                                                }];
+            hideAction.backgroundColor = [WPStyleGuide grey];
+            [actions addObject:hideAction];
+        } else {
+            UITableViewRowAction *unhideAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal
+                                                                                    title:NSLocalizedString(@"Unhide", @"Unhides a site from the site picker list")
+                                                                                  handler:^(UITableViewRowAction * _Nonnull action, NSIndexPath * _Nonnull indexPath) {
+                                                                                      [ReachabilityUtils onAvailableInternetConnectionDo:^{
+                                                                                          [weakSelf unhideBlogAtIndexPath:indexPath];
+                                                                                      }];
+                                                                                  }];
+            unhideAction.backgroundColor = [WPStyleGuide validGreen];
+            [actions addObject:unhideAction];
+        }
+    }
+
+    return actions;
+}
+
+- (void)showRemoveSiteAlertForIndexPath:(NSIndexPath *)indexPath
+{
+    Blog *blog = [self.dataSource blogAtIndexPath:indexPath];
+    NSString *blogDisplayName = blog.settings.name.length ? blog.settings.name : blog.displayURL;
+    NSString *model = [[UIDevice currentDevice] localizedModel];
+    NSString *message = [NSString stringWithFormat:NSLocalizedString(@"Are you sure you want to continue?\n All site data for %@ will be removed from your %@.", @"Title for the remove site confirmation alert, first %@ will be replaced with the blog url, second %@ will be replaced with iPhone/iPad/iPod Touch"), blogDisplayName, model];
+    NSString *cancelTitle = NSLocalizedString(@"Cancel", nil);
+    NSString *destructiveTitle = NSLocalizedString(@"Remove Site", @"Button to remove a site from the app");
+
+    UIAlertControllerStyle alertStyle = [UIDevice isPad] ? UIAlertControllerStyleAlert : UIAlertControllerStyleActionSheet;
+    UIAlertController *alertController = [UIAlertController alertControllerWithTitle:nil
+                                                                             message:message
+                                                                      preferredStyle:alertStyle];
+
+    [alertController addCancelActionWithTitle:cancelTitle handler:nil];
+    [alertController addDestructiveActionWithTitle:destructiveTitle handler:^(UIAlertAction *action) {
+        [self confirmRemoveSiteForIndexPath:indexPath];
+    }];
+    [self presentViewController:alertController animated:YES completion:nil];
+    [self.tableView setEditing:NO animated:YES];
+}
+
+- (void)confirmRemoveSiteForIndexPath:(NSIndexPath *)indexPath
+{
+    Blog *blog = [self.dataSource blogAtIndexPath:indexPath];
+    NSManagedObjectContext *context = [[ContextManager sharedInstance] mainContext];
+    BlogService *blogService = [[BlogService alloc] initWithManagedObjectContext:context];
+    [blogService removeBlog:blog];
+    [self.tableView reloadData];
+}
+
+- (void)hideBlogAtIndexPath:(NSIndexPath *)indexPath
+{
+    Blog *blog = [self.dataSource blogAtIndexPath:indexPath];
+    [self setVisible:NO forBlog:blog];
+    [self.tableView setEditing:NO animated:YES];
+}
+
+- (void)unhideBlogAtIndexPath:(NSIndexPath *)indexPath
+{
+    Blog *blog = [self.dataSource blogAtIndexPath:indexPath];
+    [self setVisible:YES forBlog:blog];
+    [self.tableView setEditing:NO animated:YES];
 }
 
 - (BOOL)tableView:(UITableView *)tableView shouldIndentWhileEditingRowAtIndexPath:(NSIndexPath *)indexPath
@@ -657,41 +728,56 @@ static NSInteger HideSearchMinSites = 3;
     return [WPBlogTableViewCell cellHeight];
 }
 
-# pragma mark - UISearchController delegate methods
+# pragma mark - UISearchBar delegate methods
 
-- (void)willPresentSearchController:(UISearchController *)searchController
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText
+{
+    self.dataSource.searchQuery = searchText;
+}
+
+- (void)searchBarTextDidBeginEditing:(UISearchBar *)searchBar
 {
     self.dataSource.searching = YES;
+    [searchBar setShowsCancelButton:YES animated:YES];
 }
 
-- (void)willDismissSearchController:(UISearchController *)searchController
+- (void)searchBarTextDidEndEditing:(UISearchBar *)searchBar
 {
     self.dataSource.searching = NO;
-    self.searchController.searchBar.text = nil;
+    [searchBar setShowsCancelButton:NO animated:YES];
 }
 
-- (void)didDismissSearchController:(UISearchController *)searchController
+- (void)searchBarCancelButtonClicked:(UISearchBar *)searchBar
 {
-    UIEdgeInsets insets = self.tableView.scrollIndicatorInsets;
-    insets.top = self.topLayoutGuide.length;
-    self.tableView.scrollIndicatorInsets = insets;
+    [searchBar setShowsCancelButton:NO animated:YES];
+    [searchBar resignFirstResponder];
+    self.searchBar.text = nil;
+    self.dataSource.searching = NO;
+    self.dataSource.searchQuery = nil;
 }
 
-- (void)updateSearchResultsForSearchController:(UISearchController *)searchController
+- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar
 {
-    self.dataSource.searchQuery = searchController.searchBar.text;
+    [searchBar setShowsCancelButton:NO animated:YES];
+    [searchBar resignFirstResponder];
 }
 
 # pragma mark - Navigation Bar
 
 - (void)setEditing:(BOOL)editing animated:(BOOL)animated
 {
+    // We need to do this to dismiss actions on a cell that might have been swipped
+    // and it's in an open state before tapping the Edit button
+    if (editing && self.tableView.isEditing) {
+        [self.tableView setEditing:NO animated:NO];
+    }
     [super setEditing:editing animated:animated];
     [self.tableView setEditing:editing animated:animated];
     self.dataSource.editing = editing;
     [self toggleRightBarButtonItems:!editing];
 
     if (editing) {
+        [self.searchBar removeFromSuperview];
         [self.addSiteAlertController dismissViewControllerAnimated:YES completion:nil];
         [self updateHeaderSize];
         self.tableView.tableHeaderView = self.headerView;
@@ -701,8 +787,9 @@ static NSInteger HideSearchMinSites = 3;
         self.noResultsView.hidden = YES;
     }
     else {
-        self.tableView.tableHeaderView = self.searchController.searchBar;
+        self.tableView.tableHeaderView = nil;
         [self updateViewsForCurrentSiteCount];
+        [self updateSearchVisibility];
     }
 }
 

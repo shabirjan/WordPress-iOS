@@ -16,7 +16,8 @@ typedef NS_ENUM(NSUInteger, MediaType) {
     MediaTypeImage,
     MediaTypeVideo,
     MediaTypeDocument,
-    MediaTypePowerpoint
+    MediaTypePowerpoint,
+    MediaTypeAudio
 };
 
 @interface Media :  NSManagedObject
@@ -52,8 +53,8 @@ typedef NS_ENUM(NSUInteger, MediaType) {
 
 @property (nonatomic, assign) MediaType mediaType;
 @property (nonatomic, assign) MediaRemoteStatus remoteStatus;
-@property (nonatomic, strong, nullable) NSString *absoluteLocalURL;
-@property (nonatomic, strong, nullable) NSString *absoluteThumbnailLocalURL;
+@property (nonatomic, strong, nullable) NSURL *absoluteLocalURL;
+@property (nonatomic, strong, nullable) NSURL *absoluteThumbnailLocalURL;
 
 // Helper methods
 

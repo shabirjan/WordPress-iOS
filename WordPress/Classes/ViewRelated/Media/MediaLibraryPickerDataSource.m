@@ -36,8 +36,9 @@
     self = [super init];
     if (self) {
         _mediaGroup = [[MediaLibraryGroup alloc] initWithBlog:blog];
+        __weak __typeof__(self) weakSelf = self;
         _groupObserverHandler = [_mediaGroup registerChangeObserverBlock:^(BOOL incrementalChanges, NSIndexSet *removed, NSIndexSet *inserted, NSIndexSet *changed, NSArray<id<WPMediaMove>> *moved) {
-            [self notifyObserversWithIncrementalChanges:incrementalChanges removed:removed inserted:inserted changed:changed moved:moved];
+            [weakSelf notifyObserversWithIncrementalChanges:incrementalChanges removed:removed inserted:inserted changed:changed moved:moved];
         }];
         _blog = blog;
         NSManagedObjectContext *backgroundContext = [[ContextManager sharedInstance] newDerivedContext];
@@ -358,6 +359,17 @@
     return _fetchController;
 }
 
+- (NSInteger)totalAssetCount
+{
+    NSManagedObjectContext *mainContext = [[ContextManager sharedInstance] mainContext];
+    NSString *entityName = NSStringFromClass([Media class]);
+    NSFetchRequest *fetchRequest = [NSFetchRequest fetchRequestWithEntityName:entityName];
+    fetchRequest.predicate = [[self class] predicateForFilter:self.filter blog:self.blog];
+
+    return (NSInteger)[mainContext countForFetchRequest:fetchRequest
+                                                  error:nil];
+}
+
 #pragma mark - NSFetchedResultsControllerDelegate
 
 - (void)controllerWillChangeContent:(NSFetchedResultsController *)controller {
@@ -567,17 +579,38 @@
     }
     
     // Check if asset being used is a video, if not this method fails
-    if (self.assetType != MediaTypeVideo) {
+    if (!(self.assetType == WPMediaTypeVideo || self.assetType == WPMediaTypeAudio)) {
         NSString *errorMessage = NSLocalizedString(@"Selected media is not a video.", @"Error message when user tries to preview an image media like a video");
         completionHandler(nil, [self errorWithMessage:errorMessage]);
         return 0;
     }
 
     NSURL *url = nil;
+
+    if ([self.absoluteLocalURL checkResourceIsReachableAndReturnError:nil] && [self.absoluteLocalURL isVideo]) {
+        url = self.absoluteLocalURL;
+    }
+
+    if (!url && self.videopressGUID.length > 0 ){
+        NSManagedObjectContext *mainContext = [[ContextManager sharedInstance] mainContext];
+        MediaService *mediaService = [[MediaService alloc] initWithManagedObjectContext:mainContext];
+        [mediaService getMediaURLFromVideoPressID:self.videopressGUID inBlog:self.blog success:^(NSString *videoURL, NSString *posterURL) {
+            // Let see if can create an asset with this url
+            AVURLAsset *asset = [AVURLAsset assetWithURL:[NSURL URLWithString:videoURL]];
+            if (!asset) {
+                NSString *errorMessage = NSLocalizedString(@"Selected media is unavailable.", @"Error message when user tries a no longer existent video media object.");
+                completionHandler(nil, [self errorWithMessage:errorMessage]);
+                return;
+            }
+            
+            completionHandler(asset, nil);
+        } failure:^(NSError *error) {
+            completionHandler(nil, error);
+        }];
+        return 0;
+    }
     // Do we have a local url, or remote url to use for the video
-    if (self.absoluteLocalURL) {
-        url = [NSURL fileURLWithPath:self.absoluteLocalURL];
-    } else if (self.remoteURL) {
+    if (!url && self.remoteURL) {
         url = [NSURL URLWithString:self.remoteURL];
     }
 
@@ -621,6 +654,8 @@
         return WPMediaTypeImage;
     } else if (self.mediaType == MediaTypeVideo) {
         return WPMediaTypeVideo;
+    } else if (self.mediaType == MediaTypeAudio) {
+        return WPMediaTypeAudio;
     } else {
         return WPMediaTypeOther;
     }
@@ -628,19 +663,18 @@
 
 - (NSTimeInterval)duration
 {
-    if (self.mediaType != MediaTypeVideo) {
+    if (!(self.mediaType == MediaTypeVideo || self.mediaType == MediaTypeAudio)) {
         return 0;
     }
     if (self.length != nil && [self.length doubleValue] > 0) {
         return [self.length doubleValue];
     }
-    
-    if (self.absoluteLocalURL == nil ||
-        ![[NSFileManager defaultManager] fileExistsAtPath:self.absoluteLocalURL isDirectory:nil]) {
+
+    NSURL *absoluteLocalURL = self.absoluteLocalURL;
+    if (absoluteLocalURL == nil || ![[NSFileManager defaultManager] fileExistsAtPath:absoluteLocalURL.path isDirectory:nil]) {
         return 0;
     }
-    NSURL *sourceMovieURL = [NSURL fileURLWithPath:self.absoluteLocalURL];
-    AVURLAsset *sourceAsset = [AVURLAsset URLAssetWithURL:sourceMovieURL options:nil];
+    AVURLAsset *sourceAsset = [AVURLAsset URLAssetWithURL:absoluteLocalURL options:nil];
     CMTime duration = sourceAsset.duration;
     
     return CMTimeGetSeconds(duration);

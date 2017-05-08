@@ -140,9 +140,8 @@ class NotificationSyncMediator {
             }
 
             self.updateLocalNotes(with: remoteNotes) {
-                let helper = CoreDataHelper<Notification>(context: self.mainContext)
                 let predicate = NSPredicate(format: "(notificationId == %@)", noteId)
-                let note = helper.firstObject(matchingPredicate: predicate)
+                let note = self.mainContext.firstObject(ofType: Notification.self, matching: predicate)
 
                 completion?(nil, note)
             }
@@ -175,6 +174,23 @@ class NotificationSyncMediator {
         updateReadStatus(true, forNoteWithObjectID: notification.objectID)
     }
 
+    /// Invalidates the cache for a notification, marks it as read and syncs it.
+    ///
+    /// - Parameters:
+    ///     - noteID: The notification id to mark as read.
+    ///     - completion: Callback to be executed on completion.
+    ///
+    func markAsReadAndSync(_ noteID: String, completion: ((Error?) -> Void)? = nil) {
+        invalidateCacheForNotification(with: noteID)
+        remote.updateReadStatus(noteID, read: true) { error in
+            if let error = error {
+                DDLogSwift.logError("Error marking note as read: \(error)")
+            }
+            self.syncNote(with: noteID) { _ in
+                completion?(error)
+            }
+        }
+    }
 
     /// Updates the Backend's Last Seen Timestamp. Used to calculate the Badge Count!
     ///
@@ -200,13 +216,12 @@ class NotificationSyncMediator {
     ///
     func deleteNote(noteID: String) {
         let derivedContext = type(of: self).sharedDerivedContext(with: contextManager)
-        let helper = CoreDataHelper<Notification>(context: derivedContext)
 
         derivedContext.perform {
             let predicate = NSPredicate(format: "(notificationId == %@)", noteID)
 
-            for orphan in helper.allObjects(matchingPredicate: predicate) {
-                helper.deleteObject(orphan)
+            for orphan in derivedContext.allObjects(ofType: Notification.self, matching: predicate) {
+                derivedContext.deleteObject(orphan)
             }
 
             self.contextManager.saveDerivedContext(derivedContext)
@@ -217,11 +232,10 @@ class NotificationSyncMediator {
     ///
     func invalidateCacheForNotification(with noteID: String) {
         let derivedContext = type(of: self).sharedDerivedContext(with: contextManager)
-        let helper = CoreDataHelper<Notification>(context: derivedContext)
         let predicate = NSPredicate(format: "(notificationId == %@)", noteID)
 
         derivedContext.perform {
-            guard let notification = helper.firstObject(matchingPredicate: predicate) else {
+            guard let notification = derivedContext.firstObject(ofType: Notification.self, matching: predicate) else {
                 return
             }
 
@@ -245,14 +259,13 @@ private extension NotificationSyncMediator {
     ///
     func determineUpdatedNotes(with remoteHashes: [RemoteNotification], completion: @escaping (([String]) -> Void)) {
         let derivedContext = type(of: self).sharedDerivedContext(with: contextManager)
-        let helper = CoreDataHelper<Notification>(context: derivedContext)
 
         derivedContext.perform {
             let remoteIds = remoteHashes.map { $0.notificationId }
             let predicate = NSPredicate(format: "(notificationId IN %@)", remoteIds)
             var localHashes = [String: String]()
 
-            for note in helper.allObjects(matchingPredicate: predicate) {
+            for note in derivedContext.allObjects(ofType: Notification.self, matching: predicate) {
                 localHashes[note.notificationId] = note.notificationHash ?? ""
             }
 
@@ -281,12 +294,11 @@ private extension NotificationSyncMediator {
     ///
     func updateLocalNotes(with remoteNotes: [RemoteNotification], completion: ((Void) -> Void)? = nil) {
         let derivedContext = type(of: self).sharedDerivedContext(with: contextManager)
-        let helper = CoreDataHelper<Notification>(context: derivedContext)
 
         derivedContext.perform {
             for remoteNote in remoteNotes {
                 let predicate = NSPredicate(format: "(notificationId == %@)", remoteNote.notificationId)
-                let localNote = helper.firstObject(matchingPredicate: predicate) ?? helper.insertNewObject()
+                let localNote = derivedContext.firstObject(ofType: Notification.self, matching: predicate) ?? derivedContext.insertNewObject(ofType: Notification.self)
 
                 localNote.update(with: remoteNote)
             }
@@ -307,14 +319,13 @@ private extension NotificationSyncMediator {
     ///
     func deleteLocalMissingNotes(from remoteHashes: [RemoteNotification], completion: @escaping ((Void) -> Void)) {
         let derivedContext = type(of: self).sharedDerivedContext(with: contextManager)
-        let helper = CoreDataHelper<Notification>(context: derivedContext)
 
         derivedContext.perform {
             let remoteIds = remoteHashes.map { $0.notificationId }
             let predicate = NSPredicate(format: "NOT (notificationId IN %@)", remoteIds)
 
-            for orphan in helper.allObjects(matchingPredicate: predicate) {
-                helper.deleteObject(orphan)
+            for orphan in derivedContext.allObjects(ofType: Notification.self, matching: predicate) {
+                derivedContext.deleteObject(orphan)
             }
 
             self.contextManager.saveDerivedContext(derivedContext) {
@@ -336,8 +347,7 @@ private extension NotificationSyncMediator {
     ///     - noteObjectID: CoreData ObjectID
     ///
     func updateReadStatus(_ status: Bool, forNoteWithObjectID noteObjectID: NSManagedObjectID) {
-        let helper = CoreDataHelper<Notification>(context: mainContext)
-        let note = helper.loadObject(withObjectID: noteObjectID)
+        let note = mainContext.loadObject(ofType: Notification.self, with: noteObjectID)
         note?.read = status
         contextManager.saveContextAndWait(mainContext)
     }

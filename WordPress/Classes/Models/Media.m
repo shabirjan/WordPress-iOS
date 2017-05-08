@@ -1,5 +1,6 @@
 #import "Media.h"
 #import "ContextManager.h"
+#import "WordPress-Swift.h"
 
 @implementation Media
 
@@ -41,6 +42,9 @@
             break;
         case MediaTypeDocument:
             return @"document";
+            break;
+        case MediaTypeAudio:
+            return @"audio";
             break;
     }
 }
@@ -89,7 +93,10 @@
         return MediaTypePowerpoint;
     } else if ([self.mediaTypeString isEqualToString:[Media stringFromMediaType:MediaTypeDocument]]) {
         return MediaTypeDocument;
+    } else if ([self.mediaTypeString isEqualToString:[Media stringFromMediaType:MediaTypeAudio]]) {
+        return MediaTypeAudio;
     }
+
     return MediaTypeDocument;
 }
 
@@ -114,6 +121,8 @@
         type = MediaTypeVideo;
     } else if (UTTypeConformsTo(fileUTI, ppt)) {
         type = MediaTypePowerpoint;
+    } else if (UTTypeConformsTo(fileUTI, kUTTypeAudio)) {
+        type = MediaTypeAudio;
     } else {
         type = MediaTypeDocument;
     }
@@ -152,46 +161,41 @@
 
 #pragma mark - Absolute URLs
 
-- (NSString *)absoluteThumbnailLocalURL;
+- (NSURL *)absoluteThumbnailLocalURL;
 {
-    if ( self.localThumbnailURL ) {
-        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        NSString *documentsDirectory = [paths firstObject];
-        NSString *absolutePath = [NSString pathWithComponents:@[documentsDirectory, self.localThumbnailURL]];
-        return absolutePath;
-    } else {
+    if (!self.localThumbnailURL.length) {
         return nil;
     }
+    return [self absoluteURLForLocalPath:self.localThumbnailURL];
 }
 
-- (void)setAbsoluteThumbnailLocalURL:(NSString *)absoluteLocalURL
+- (void)setAbsoluteThumbnailLocalURL:(NSURL *)absoluteLocalURL
 {
-    NSParameterAssert([absoluteLocalURL isAbsolutePath]);
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString *documentsDirectory = [paths firstObject];
-    NSString *localPath =  [absoluteLocalURL stringByReplacingOccurrencesOfString:documentsDirectory withString:@""];
-    self.localThumbnailURL = localPath;
+    self.localThumbnailURL = absoluteLocalURL.lastPathComponent;
 }
 
-- (NSString *)absoluteLocalURL
+- (NSURL *)absoluteLocalURL
 {
-    if ( self.localURL ) {
-        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        NSString *documentsDirectory = [paths firstObject];
-        NSString *absolutePath = [NSString pathWithComponents:@[documentsDirectory, self.localURL]];
-        return absolutePath;
-    } else {
+    if (!self.localURL.length) {
         return nil;
     }
+    return [self absoluteURLForLocalPath:self.localURL];
 }
 
-- (void)setAbsoluteLocalURL:(NSString *)absoluteLocalURL
+- (void)setAbsoluteLocalURL:(NSURL *)absoluteLocalURL
 {
-    NSParameterAssert([absoluteLocalURL isAbsolutePath]);
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString *documentsDirectory = [paths firstObject];
-    NSString *localPath =  [absoluteLocalURL stringByReplacingOccurrencesOfString:documentsDirectory withString:@""];
-    self.localURL = localPath;
+    self.localURL = absoluteLocalURL.lastPathComponent;
+}
+
+- (NSURL *)absoluteURLForLocalPath:(NSString *)localPath
+{
+    NSError *error;
+    NSURL *mediaDirectory = [MediaLibrary localDirectoryAndReturnError:&error];
+    if (error) {
+        DDLogInfo(@"Error resolving Media directory: %@", error);
+        return nil;
+    }
+    return [mediaDirectory URLByAppendingPathComponent:localPath.lastPathComponent];
 }
 
 #pragma mark - CoreData Helpers
@@ -200,12 +204,14 @@
 {
     NSError *error = nil;
     NSFileManager *fileManager = [NSFileManager defaultManager];
-    if ([fileManager fileExistsAtPath:self.absoluteLocalURL] &&
-        ![fileManager removeItemAtPath:self.absoluteLocalURL error:&error]) {
+    NSString *absolutePath = self.absoluteLocalURL.path;
+    if ([fileManager fileExistsAtPath:absolutePath] &&
+        ![fileManager removeItemAtPath:absolutePath error:&error]) {
         DDLogInfo(@"Error removing media files:%@", error);
     }
-    if ([fileManager fileExistsAtPath:self.absoluteThumbnailLocalURL] &&
-        ![fileManager removeItemAtPath:self.absoluteThumbnailLocalURL error:&error]) {
+    NSString *absoluteThumbnailPath = self.absoluteThumbnailLocalURL.path;
+    if ([fileManager fileExistsAtPath:absoluteThumbnailPath] &&
+        ![fileManager removeItemAtPath:absoluteThumbnailPath error:&error]) {
         DDLogInfo(@"Error removing media files:%@", error);
     }
     [super prepareForDeletion];

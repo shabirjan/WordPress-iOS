@@ -113,7 +113,6 @@ const NSInteger WPRestErrorCodeMediaNew = 10;
             success:(void (^)(RemoteMedia *remoteMedia))success
             failure:(void (^)(NSError *error))failure
 {
-    NSString *path = media.localURL;
     NSString *type = media.mimeType;
     NSString *filename = media.file;
 
@@ -124,8 +123,7 @@ const NSInteger WPRestErrorCodeMediaNew = 10;
     if (media.postID != nil && [media.postID compare:@(0)] == NSOrderedDescending) {
         parameters[@"attrs[0][parent_id]"] = media.postID;
     }
-    NSURL *url = [[NSURL alloc] initFileURLWithPath:path];
-    FilePart *filePart = [[FilePart alloc] initWithParameterName:@"media[]" url:url filename:filename mimeType:type];
+    FilePart *filePart = [[FilePart alloc] initWithParameterName:@"media[]" url:media.localURL filename:filename mimeType:type];
     __block NSProgress *localProgress = [self.wordPressComRestApi multipartPOST:requestUrl
                                                     parameters:parameters
                                                      fileParts:@[filePart]
@@ -205,6 +203,41 @@ const NSInteger WPRestErrorCodeMediaNew = 10;
                                if ([status isEqualToString:@"deleted"]) {
                                    if (success) {
                                        success();
+                                   }
+                               } else {
+                                   if (failure) {
+                                       NSError *error = [NSError errorWithDomain:WordPressComRestApiErrorDomain
+                                                                            code:WordPressComRestApiErrorUnknown
+                                                                        userInfo:nil];
+                                       failure(error);
+                                   }
+                               }
+                           } failure:^(NSError *error, NSHTTPURLResponse *response) {
+                               if (failure) {
+                                   failure(error);
+                               }
+                           }];
+}
+
+-(void)getVideoURLFromVideoPressID:(NSString *)videoPressID
+                           success:(void (^)(NSURL *videoURL, NSURL *posterURL))success
+                           failure:(void (^)(NSError *))failure
+{
+    NSString *path = [NSString stringWithFormat:@"videos/%@", videoPressID];
+    NSString *requestUrl = [self pathForEndpoint:path
+                                     withVersion:ServiceRemoteWordPressComRESTApiVersion_1_1];
+
+    [self.wordPressComRestApi GET:requestUrl
+                        parameters:nil
+                           success:^(id responseObject, NSHTTPURLResponse *httpResponse) {
+                               NSDictionary *response = (NSDictionary *)responseObject;
+                               NSString *urlString = [response stringForKey:@"original"];
+                               NSString *posterURLString = [response stringForKey:@"poster"];
+                               NSURL *videoURL = [NSURL URLWithString:urlString];
+                               NSURL *posterURL = [NSURL URLWithString:posterURLString];
+                               if (videoURL) {
+                                   if (success) {
+                                       success(videoURL, posterURL);
                                    }
                                } else {
                                    if (failure) {
